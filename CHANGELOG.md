@@ -42,6 +42,17 @@ All notable changes to Zappix are recorded here. The format follows
 
 ### Changed
 
+- **Dropdown visual pass.** Tile numbers stay neutral while healthy and only
+  turn amber or red when they need attention (the panel's rule); units are set
+  smaller than the figure (`46.9` kb/s) with tabular digits. Sparklines are
+  fitted to their own window with a minimum span instead of a flat 0–100 axis —
+  the meter already shows the level, so the curve now shows movement — and
+  mark the latest sample. Tiles in a row end on the same line. The brand row is
+  quieter and the server name larger; with one server the duplicate header dot
+  and *Refresh all* are hidden. The host dot sits beside the host name, and the
+  reason behind a non-green dot (*Agent unreachable*, *In maintenance*, *No new
+  data*) is written next to it instead of in a tooltip St never showed. The
+  footer is set off by a hairline.
 - **The panel indicator is one mark instead of three.** The status dot, the
   monitor icon and the bold value were three separate actors (~73 px for `6%`);
   they are now a single 16 px ring gauge with the value beside it (~41 px, about
@@ -70,6 +81,17 @@ All notable changes to Zappix are recorded here. The format follows
 
 ### Fixed
 
+- **On a HiDPI screen a single host scrolled and its last tile was cut off.**
+  The list-height cap (560 px) and chrome allowance were logical pixels applied
+  to stage pixels, which on X11 at 2× are physical — so the cap was really
+  280 px. Both are now multiplied by the theme scale factor. When the list does
+  overflow, it gets a gutter so the overlay scrollbar no longer covers the
+  right-hand column.
+- Tile columns were unequal: rows split only *spare* width evenly, so the odd
+  last tile (Containers) came out wider than the tiles above it. Rows are now
+  homogeneous.
+- In the light theme, amber and red tile values were overridden by the neutral
+  text colour.
 - **The connecting pulse never stopped.** `StatusDot` stored the return value
   of `actor.ease()`, which is `undefined`, so `_stopPulse()` was a no-op: the
   panel dot stayed dimmed mid-animation forever, and the endless transition

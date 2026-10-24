@@ -3,7 +3,7 @@
 // Formatters are the most obvious thing to break silently: a byte size that
 // reads "1024 KB" instead of "1 MB" is not an error anywhere, it is just wrong
 // on screen. These cases pin the rounding boundaries and the em-dash fallbacks.
-import { assertEqual, runTests } from './testUtils.js';
+import { assertDeepEqual, assertEqual, runTests } from './testUtils.js';
 import {
     formatBitRate,
     formatBitRateCompact,
@@ -18,6 +18,7 @@ import {
     formatPercent,
     formatRelativeTime,
     percentToFraction,
+    splitValueUnit,
 } from '../src/shared/format.js';
 import { VALUE_KIND } from '../src/model/metricCatalog.js';
 
@@ -135,6 +136,24 @@ await runTests([
         () => {
             assertEqual(formatMetricValue('mystery', 5), '5');
             assertEqual(formatMetricValue('mystery', null), '—');
+        },
+    ],
+    [
+        'splitValueUnit separates a single number from its unit',
+        () => {
+            assertDeepEqual(splitValueUnit('46.9 kb/s'), { number: '46.9', unit: ' kb/s' });
+            assertDeepEqual(splitValueUnit('63%'), { number: '63', unit: '%' });
+            assertDeepEqual(splitValueUnit('48s'), { number: '48', unit: 's' });
+        },
+    ],
+    [
+        'splitValueUnit leaves compound and bare values whole',
+        () => {
+            for (const text of ['12d 4h', '1,284', '1.23', '—', '']) {
+                const { number, unit } = splitValueUnit(text);
+                assertEqual(number, text);
+                assertEqual(unit, '');
+            }
         },
     ],
     [

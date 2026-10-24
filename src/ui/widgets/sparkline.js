@@ -19,6 +19,9 @@ import { buildBezierSegments, buildSparklineGeometry } from '../../model/series.
 /** Vertical breathing room so a peak never touches the tile border. */
 const PADDING_Y = 3;
 
+/** Radius of the latest-sample marker; also the horizontal inset it needs. */
+const HEAD_RADIUS = 2.25;
+
 export const Sparkline = GObject.registerClass(
     {
         GTypeName: 'ZappixSparkline',
@@ -115,7 +118,7 @@ export const Sparkline = GObject.registerClass(
             const geometry = buildSparklineGeometry(this._points, {
                 width,
                 height,
-                paddingX: 1,
+                paddingX: HEAD_RADIUS,
                 paddingY: PADDING_Y,
                 floor: this._floor,
                 ceiling: this._ceiling,
@@ -156,6 +159,12 @@ export const Sparkline = GObject.registerClass(
             cr.setLineJoin(cairo.LineJoin.ROUND);
             cr.setSourceRGBA(this._stroke.r, this._stroke.g, this._stroke.b, this._stroke.a);
             cr.stroke();
+
+            // The newest sample is the number in the headline; marking it ties
+            // the curve to the value above it.
+            const head = points[points.length - 1];
+            cr.arc(head.x, head.y, HEAD_RADIUS, 0, Math.PI * 2);
+            cr.fill();
         }
 
         /**

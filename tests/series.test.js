@@ -176,12 +176,46 @@ await runTests([
         },
     ],
     [
-        'axisForKind pins percentages and auto-scales rates',
+        'axisForKind auto-scales rates from zero',
         () => {
-            assertDeepEqual(axisForKind('percent', series([1])), { floor: 0, ceiling: 100 });
             const rate = axisForKind('rate', series([10, 20]));
             assertEqual(rate.floor, 0);
             assert(rate.ceiling > 20, 'ceiling has headroom');
+        },
+    ],
+    [
+        'axisForKind fits percentages to their window with a minimum span',
+        () => {
+            assertDeepEqual(axisForKind('percent', series([60, 62, 64])), {
+                floor: 52,
+                ceiling: 72,
+            });
+        },
+    ],
+    [
+        'axisForKind slides a percentage window back inside 0..100',
+        () => {
+            assertDeepEqual(axisForKind('percent', series([2, 3])), { floor: 0, ceiling: 20 });
+            assertDeepEqual(axisForKind('percent', series([98, 99])), {
+                floor: 80,
+                ceiling: 100,
+            });
+            assertDeepEqual(axisForKind('percent', series([5, 95])), { floor: 0, ceiling: 100 });
+        },
+    ],
+    [
+        'axisForKind falls back to 0..100 for an empty percentage series',
+        () => {
+            assertDeepEqual(axisForKind('percent', []), { floor: 0, ceiling: 100 });
+        },
+    ],
+    [
+        'axisForKind keeps a steady count off the edges',
+        () => {
+            assertDeepEqual(axisForKind('count', series([21, 21, 21])), {
+                floor: 19,
+                ceiling: 23,
+            });
         },
     ],
     [

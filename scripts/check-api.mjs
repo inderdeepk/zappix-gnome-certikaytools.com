@@ -31,7 +31,7 @@ const BANNED = [
         'get_actor() was removed in 45',
     ],
     [
-        /\bSt\.ThemeContext\b/,
+        /\bSt\.ThemeContext\b(?!\.get_for_stage\b)/,
         'St.ThemeContext was replaced by St.ThemeContext.get_for_stage()',
         'St.ThemeContext as a constructor is gone',
     ],

@@ -16,6 +16,7 @@
 // Shell-side module (St/Clutter).
 
 import GObject from 'gi://GObject';
+import GLib from 'gi://GLib';
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 
@@ -23,7 +24,7 @@ import { Sparkline } from './sparkline.js';
 import { Meter } from './meter.js';
 import { severityColour } from '../../shared/appearance.js';
 import { axisForKind, trendDirection } from '../../model/series.js';
-import { formatMetricValue } from '../../shared/format.js';
+import { formatMetricValue, splitValueUnit } from '../../shared/format.js';
 import { VALUE_KIND } from '../../model/metricCatalog.js';
 import { gettext as _ } from '../../shared/i18n.js';
 
@@ -97,8 +98,11 @@ export const MetricTile = GObject.registerClass(
             this.add_child(this._detail);
 
             this._sparklineHeight = sparklineHeight ?? 32;
+            // Expands into the meter's slot on tiles without one, so every tile
+            // in a row ends on the same line.
             this._sparkline = new Sparkline({
                 height: this._sparklineHeight,
+                y_expand: true,
             });
             this.add_child(this._sparkline);
 
@@ -106,6 +110,7 @@ export const MetricTile = GObject.registerClass(
             this.add_child(this._meter);
 
             this._severity = '';
+            this._valueText = '—';
             this._kind = VALUE_KIND.PERCENT;
             this._reduceMotion = false;
         }
@@ -126,7 +131,7 @@ export const MetricTile = GObject.registerClass(
             this._label.text = _(metricView.label);
 
             const hasValue = metricView.available && metricView.value !== null;
-            this._value.text = hasValue ? formatMetricValue(kind, metricView.value) : '—';
+            this._setValueText(hasValue ? formatMetricValue(kind, metricView.value) : '—');
             this._applySeverity(metricView.severity, hasValue);
 
             const detail =
@@ -160,6 +165,26 @@ export const MetricTile = GObject.registerClass(
         }
 
         /**
+         * Headline with the unit set smaller and quieter than the number, so
+         * `46.9 kb/s` reads as a figure first.
+         *
+         * @param {string} text
+         */
+        _setValueText(text) {
+            this._valueText = text;
+            const { number, unit } = splitValueUnit(text);
+            const escape = (part) => GLib.markup_escape_text(part, -1);
+            this._value.clutter_text.set_markup(
+                unit
+                    ? `${escape(number)}<span size="smaller" alpha="62%">${escape(unit)}</span>`
+                    : escape(number),
+            );
+        }
+
+        /**
+         * Healthy values stay neutral, as on the panel: colour is reserved for
+         * amber and red, so it only ever means "look here".
+         *
          * @param {string} severity
          * @param {boolean} hasValue
          */
@@ -167,8 +192,11 @@ export const MetricTile = GObject.registerClass(
             if (this._severity) {
                 this._value.remove_style_class_name(`zappix-text-${this._severity}`);
             }
-            this._severity = hasValue ? severity : 'unknown';
-            this._value.add_style_class_name(`zappix-text-${this._severity}`);
+            const next = hasValue ? severity : 'unknown';
+            this._severity = next === 'ok' ? '' : next;
+            if (this._severity) {
+                this._value.add_style_class_name(`zappix-text-${this._severity}`);
+            }
         }
 
         /**
@@ -197,7 +225,7 @@ export const MetricTile = GObject.registerClass(
          * @returns {string}
          */
         _buildTooltip(metricView) {
-            const parts = [`${metricView.label}: ${this._value.text}`];
+            const parts = [`${metricView.label}: ${this._valueText}`];
 
             if (metricView.sourceItemName) {
                 parts.push(metricView.sourceItemName);

@@ -186,9 +186,14 @@ export const Dashboard = GObject.registerClass(
             this._reduceMotion = reduceMotion;
 
             const hasServers = snapshots.length > 0;
+            const multiServer = snapshots.length > 1;
             this._emptyState.visible = !hasServers;
             this._card.visible = hasServers;
-            this._switcher.visible = snapshots.length > 1;
+            this._switcher.visible = multiServer;
+            // With one server the card's own dot and refresh say the same thing;
+            // repeating them in the header only adds a third green dot.
+            this._headerDot.visible = multiServer;
+            this._refreshAllButton.visible = multiServer;
 
             this._renderHeaderDot();
 

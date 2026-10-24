@@ -186,6 +186,22 @@ export function formatMetricValue(kind, value) {
 }
 
 /**
+ * Split a headline into number and unit so the unit can be typeset smaller:
+ * `46.9 kb/s` → `46.9` + ` kb/s`, `63%` → `63` + `%`. The unit keeps its
+ * leading space, so `number + unit` is always the original text. Anything that
+ * is not one number followed by one unit (`12d 4h`, `1,284`, `—`) comes back
+ * whole.
+ *
+ * @param {string} text
+ * @returns {{number: string, unit: string}}
+ */
+export function splitValueUnit(text) {
+    const source = String(text ?? '');
+    const match = /^(−?[\d.,]+)(\s?[^\d\s]+)$/.exec(source);
+    return match ? { number: match[1], unit: match[2] } : { number: source, unit: '' };
+}
+
+/**
  * Compact headline for the panel bar.
  *
  * @param {string} kind

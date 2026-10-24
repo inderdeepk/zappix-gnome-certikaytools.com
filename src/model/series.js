@@ -213,22 +213,62 @@ export function buildBezierSegments(points) {
 /**
  * Value range worth drawing for a metric.
  *
- * Percentages get a fixed 0..100 axis so two hosts are visually comparable;
- * everything else auto-scales, with load pinned at a floor of 1 so an idle
- * box does not magnify rounding noise into a dramatic waveform.
+ * The tile's meter already shows where a percentage sits on 0..100, so the
+ * sparkline shows *movement*: percentages, counts and load are fitted to their
+ * own window, with a minimum span so rounding noise stays a flat line. On a
+ * pinned 0..100 axis a 28-pixel strip moves a quarter pixel per point, and
+ * every curve rendered as a straight line. Rates keep a zero floor because
+ * zero traffic is itself the signal.
  *
  * @param {string} kind metric VALUE_KIND
  * @param {Array<{v:number}>} points
  * @returns {{floor: number|null, ceiling: number|null}}
  */
 export function axisForKind(kind, points) {
-    if (kind === 'percent') return { floor: 0, ceiling: 100 };
+    if (kind === 'percent') return fittedAxis(points, { minSpan: 20, lower: 0, upper: 100 });
+    if (kind === 'count') return fittedAxis(points, { minSpan: 4, lower: 0 });
+    if (kind === 'load') return fittedAxis(points, { minSpan: 1, lower: 0 });
     if (kind === 'duration') return { floor: 0, ceiling: null };
-    if (kind === 'load') return { floor: 0, ceiling: null };
-    if (kind === 'count') return { floor: 0, ceiling: null };
     const stats = computeStats(points);
     const ceiling = stats ? Math.max(1, stats.max * 1.15) : null;
     return { floor: 0, ceiling };
+}
+
+/**
+ * Window around the data: at least `minSpan` tall, 25 % headroom on wide
+ * swings, slid (not squashed) to stay inside the metric's natural domain.
+ *
+ * @param {Array<{v:number}>} points
+ * @param {object} options
+ * @param {number} options.minSpan
+ * @param {number} [options.lower=-Infinity]
+ * @param {number} [options.upper=Infinity]
+ * @returns {{floor: number|null, ceiling: number|null}}
+ */
+function fittedAxis(points, { minSpan, lower = -Infinity, upper = Infinity }) {
+    const stats = computeStats(points);
+    if (!stats) {
+        return {
+            floor: Number.isFinite(lower) ? lower : null,
+            ceiling: Number.isFinite(upper) ? upper : null,
+        };
+    }
+
+    const span = Math.min(upper - lower, Math.max(minSpan, (stats.max - stats.min) * 1.25));
+    const centre = (stats.max + stats.min) / 2;
+    let floor = centre - span / 2;
+    let ceiling = centre + span / 2;
+
+    if (floor < lower) {
+        ceiling += lower - floor;
+        floor = lower;
+    }
+    if (ceiling > upper) {
+        floor = Math.max(lower, floor - (ceiling - upper));
+        ceiling = upper;
+    }
+
+    return { floor, ceiling };
 }
 
 /**

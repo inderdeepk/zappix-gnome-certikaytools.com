@@ -84,11 +84,13 @@
     padding: 0 2px 2px 2px;
 }
 
+/* The brand is chrome, not content: it steps back so the server name below
+   is the first thing read. */
 .zappix-title {
-    font-size: 1.15em;
+    font-size: 0.9em;
     font-weight: bold;
-    color: rgba(255, 255, 255, 0.94);
-    letter-spacing: 0.2px;
+    color: rgba(255, 255, 255, 0.55);
+    letter-spacing: 0.6px;
 }
 
 .zappix-icon-button {
@@ -175,7 +177,7 @@
 }
 
 .zappix-card-title {
-    font-size: 1.02em;
+    font-size: 1.1em;
     font-weight: bold;
     color: rgba(255, 255, 255, 0.94);
 }
@@ -192,6 +194,12 @@
 
 .zappix-host-list {
     spacing: 12px;
+}
+
+/* Set by the card only when the list overflows: a gutter for the overlay
+   scrollbar so it never covers the right-hand column. */
+.zappix-host-list-scrolling {
+    padding-right: 12px;
 }
 
 /* ── Host rows ──────────────────────────────────────────────────────── */
@@ -220,6 +228,13 @@
     color: rgba(255, 255, 255, 0.42);
 }
 
+/* "Agent unreachable", "In maintenance", … — colour comes from the
+   zappix-text-* severity class beside it. */
+.zappix-host-status {
+    font-size: 0.76em;
+    font-weight: bold;
+}
+
 .zappix-tile-rows {
     spacing: 8px;
 }
@@ -234,7 +249,7 @@
     background-color: rgba(255, 255, 255, 0.045);
     border: 1px solid rgba(255, 255, 255, 0.065);
     border-radius: 12px;
-    padding: 9px 10px 8px 10px;
+    padding: 10px 12px 10px 12px;
     spacing: 2px;
     min-width: 112px;
     transition-duration: 160ms;
@@ -258,7 +273,7 @@
 }
 
 .zappix-tile-spacer {
-    /* Keeps an odd final tile at half width instead of stretching it. */
+    /* Holds the empty column beside an odd final tile (rows are homogeneous). */
     min-width: 112px;
 }
 
@@ -277,10 +292,14 @@
     color: rgba(255, 255, 255, 0.38);
 }
 
+/* Neutral while healthy; the zappix-text-* class tints it amber or red. The
+   unit is set smaller in markup (metricTile.js). Tabular figures stop the
+   tile jittering as the number changes. */
 .zappix-tile-value {
-    font-size: 1.32em;
+    font-size: 1.42em;
     font-weight: bold;
     color: rgba(255, 255, 255, 0.94);
+    font-feature-settings: "tnum";
 }
 
 /* The absolute figure behind a percentage, e.g. "5.0 GB of 7.8 GB". Sits
@@ -294,7 +313,7 @@
 .zappix-sparkline {
     /* Height comes from JS (density tokens); this is only a floor. */
     min-height: 18px;
-    margin-top: 1px;
+    margin-top: 4px;
 }
 
 .zappix-meter {
@@ -407,7 +426,8 @@
 
 .zappix-card-footer {
     spacing: 8px;
-    padding: 0 2px;
+    padding: 10px 2px 0 2px;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .zappix-footer-label {
@@ -489,7 +509,6 @@
     border-color: rgba(0, 0, 0, 0.09);
 }
 
-.zappix-light .zappix-title,
 .zappix-light .zappix-card-title,
 .zappix-light .zappix-host-name,
 .zappix-light .zappix-tile-value,
@@ -497,10 +516,27 @@
     color: rgba(20, 22, 28, 0.94);
 }
 
+/* The rule above outranks a lone severity class; restore the tint with the
+   deeper tones the panel uses on light bars (appearance.js). */
+.zappix-light .zappix-tile-value.zappix-text-warn,
+.zappix-light .zappix-host-status.zappix-text-warn {
+    color: #9a5b00;
+}
+
+.zappix-light .zappix-tile-value.zappix-text-crit,
+.zappix-light .zappix-host-status.zappix-text-crit {
+    color: #c92a3a;
+}
+
+.zappix-light .zappix-card-footer {
+    border-color: rgba(0, 0, 0, 0.08);
+}
+
 .zappix-light .zappix-tile-detail {
     color: rgba(20, 22, 28, 0.55);
 }
 
+.zappix-light .zappix-title,
 .zappix-light .zappix-card-subtitle,
 .zappix-light .zappix-empty-body {
     color: rgba(20, 22, 28, 0.62);

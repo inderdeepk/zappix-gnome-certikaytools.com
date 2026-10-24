@@ -12,7 +12,7 @@
 //
 //   ● Production                      4 hosts · 2 problems   ↻
 //   ┌───────────────────────────────────────────────────────────┐
-//   │ web-01  10.0.0.4:10050                          ●         │
+//   │ ● web-01  10.0.0.4:10050                                  │
 //   │ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐      │
 //   │ │ CPU 42%  │ │ MEM 61%  │ │ DSK 78%  │ │ NET 1.2M │      │
 //   │ └──────────┘ └──────────┘ └──────────┘ └──────────┘      │
@@ -281,13 +281,17 @@ export const ServerCard = GObject.registerClass(
             // the second row in half.
             const monitorHeight = Main.layoutManager?.primaryMonitor?.height ?? 1080;
             const panelHeight = Main.panel?.height ?? 32;
+            // Monitor and panel heights are stage pixels, which on X11 at 2× are
+            // physical; the constants below are logical. Unscaled, the 560 px
+            // cap became 280 px and a single five-tile host scrolled.
+            const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
             // Header + card head + footer + popup padding. Deliberately tight:
             // this is what decides whether the last row of tiles is visible
             // without scrolling on a short screen.
-            const chrome = 150;
+            const chrome = 150 * scale;
             const limit = Math.max(
-                180,
-                Math.min(this._maxListHeight, monitorHeight - panelHeight - chrome),
+                180 * scale,
+                Math.min(this._maxListHeight * scale, monitorHeight - panelHeight - chrome),
             );
 
             // Measure the real content. The previous estimate assumed one row
@@ -301,6 +305,11 @@ export const ServerCard = GObject.registerClass(
             const width = this._scroll.width > 0 ? this._scroll.width : 0;
             const [, natural] = this._hostList.get_preferred_height(width);
             this._scroll.set_height(natural > 0 ? Math.min(natural, limit) : -1);
+
+            // The scrollbar overlays the content; when it will appear, give it a
+            // gutter so it never sits on the right-hand column of tiles.
+            if (natural > limit) this._hostList.add_style_class_name('zappix-host-list-scrolling');
+            else this._hostList.remove_style_class_name('zappix-host-list-scrolling');
         }
 
         /**
@@ -414,6 +423,9 @@ const HostSection = GObject.registerClass(
             });
             this.add_child(head);
 
+            this._dot = new StatusDot({ style_class: 'zappix-dot zappix-dot-small' });
+            head.add_child(this._dot);
+
             const identity = new St.BoxLayout({
                 style_class: 'zappix-host-identity',
                 vertical: false,
@@ -436,8 +448,14 @@ const HostSection = GObject.registerClass(
             });
             identity.add_child(this._endpoint);
 
-            this._dot = new StatusDot({ style_class: 'zappix-dot zappix-dot-small' });
-            head.add_child(this._dot);
+            // Why the dot is not green, in words: St never displays tooltips.
+            this._status = new St.Label({
+                style_class: 'zappix-host-status',
+                text: '',
+                y_align: Clutter.ActorAlign.CENTER,
+                visible: false,
+            });
+            head.add_child(this._status);
 
             this._tileRows = new St.BoxLayout({
                 style_class: 'zappix-tile-rows',
@@ -466,21 +484,23 @@ const HostSection = GObject.registerClass(
             // availability as Unknown even while data is flowing — the newest
             // reading is the only honest signal that collection still works.
             let severity = host.worstSeverity;
-            let tooltip = '';
+            let status = '';
 
             if (host.maintenance) {
                 severity = SEVERITY.MAINTENANCE;
-                tooltip = _('In maintenance');
+                status = _('In maintenance');
             } else if (host.availability === 'unavailable') {
                 severity = SEVERITY.CRIT;
-                tooltip = _('Agent unreachable');
+                status = _('Agent unreachable');
             } else if (host.stale) {
                 severity = SEVERITY.UNKNOWN;
-                tooltip = _('No new data — the agent has stopped reporting');
+                status = _('No new data');
             }
 
             this._dot.setSeverity(severity);
-            this._dot.setTooltip(tooltip);
+            this._status.text = status;
+            this._status.visible = status !== '';
+            this._status.style_class = `zappix-host-status zappix-text-${severity}`;
 
             const tokens = DENSITY_TOKENS[density] ?? DENSITY_TOKENS.comfortable;
             const metrics = host.metrics ?? [];
@@ -530,6 +550,11 @@ const HostSection = GObject.registerClass(
                         vertical: false,
                         x_expand: true,
                     });
+                    // Equal columns regardless of content. Expand-only rows
+                    // split *spare* space evenly, so a tile with a wider natural
+                    // size (or the odd last tile beside its spacer) came out
+                    // wider than its neighbours.
+                    row.layout_manager.homogeneous = true;
                     this._tileRows.add_child(row);
                 }
                 const tile = new MetricTile({
@@ -540,8 +565,8 @@ const HostSection = GObject.registerClass(
                 row.add_child(tile);
             }
 
-            // An odd tile count leaves the last row short; a spacer keeps the
-            // remaining tiles at exactly half width instead of stretching.
+            // An odd tile count leaves the last row short; a spacer holds the
+            // empty column so the last tile stays exactly half width.
             if (count % TILES_PER_ROW === 1 && row) {
                 row.add_child(
                     new St.Widget({
