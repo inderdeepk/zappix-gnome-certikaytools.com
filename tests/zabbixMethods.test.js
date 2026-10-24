@@ -104,18 +104,6 @@ await runTests([
         },
     ],
     [
-        'itemGet asks for the items that populate tile detail lines',
-        () => {
-            const call = itemGet({ hostIds: ['1'], metrics: METRICS });
-            assert(call.params.search.key_.includes('vm.memory.size[total]'), 'memory total');
-            assert(call.params.search.key_.includes('system.cpu.num'), 'cpu core count');
-            assert(
-                call.params.search.key_.includes('docker.containers.stopped'),
-                'stopped containers',
-            );
-        },
-    ],
-    [
         'itemGet requests a bounded field list',
         () => {
             const call = itemGet({ hostIds: ['1'], metrics: METRICS });

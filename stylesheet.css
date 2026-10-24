@@ -302,15 +302,12 @@
     font-feature-settings: "tnum";
 }
 
-/* The absolute context behind the headline, e.g. "5/7.5 GB" or
-   "↓ 2.1 · ↑ 0.4 Mb/s". A step below the label and tight under the number, so
-   the pair reads as one value rather than a second headline. */
+/* The absolute figure behind a percentage, e.g. "5.0 GB of 7.8 GB". Sits
+   tight under the number so the pair reads as one value. */
 .zappix-tile-detail {
-    font-size: 0.72em;
+    font-size: 0.76em;
     color: rgba(255, 255, 255, 0.55);
-    letter-spacing: 0.15px;
-    font-feature-settings: "tnum";
-    margin-top: -2px;
+    margin-top: -3px;
 }
 
 .zappix-sparkline {

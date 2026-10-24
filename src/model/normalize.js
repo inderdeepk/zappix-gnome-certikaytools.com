@@ -18,11 +18,10 @@
 //   • History is a separate, optional input: the panel-only poll never pays
 //     for it.
 
-import { AGGREGATE, DETAIL_KIND, TRANSFORM, VALUE_KIND, usesThresholds } from './metricCatalog.js';
+import { AGGREGATE, TRANSFORM, VALUE_KIND, usesThresholds } from './metricCatalog.js';
 import { SEVERITY, classifyPercent, classifyProblemSeverity, worstSeverity } from './severity.js';
 import { toNumericSeries } from './series.js';
-import { formatBitRatePair, formatByteRatio, formatCount, formatLoad } from '../shared/format.js';
-import { format, gettext as _, ngettext } from '../shared/i18n.js';
+import { formatBytes } from '../shared/format.js';
 
 /** Zabbix `value_type` codes that carry a number we can plot. */
 const NUMERIC_VALUE_TYPES = new Set([0, 3]);
@@ -140,7 +139,6 @@ export function selectItemsForMetric(metric, items) {
                 item,
                 transform: candidate.transform,
                 kind: candidate.fallbackKind ?? metric.kind,
-                direction: candidate.direction ?? '',
             });
             added += 1;
         }
@@ -213,7 +211,6 @@ export function resolveMetric(metric, items, { thresholds, maintenance = false }
             value,
             units: source.item.units ?? '',
             clock,
-            direction: source.direction ?? '',
         };
     });
 
@@ -232,12 +229,6 @@ export function resolveMetric(metric, items, { thresholds, maintenance = false }
           ? SEVERITY.UNKNOWN
           : SEVERITY.OK;
 
-    const detail = buildDetail(metric, items, value, {
-        sourceKey: dominant?.item?.key_ ?? '',
-        kind,
-        readings,
-    });
-
     return {
         id: metric.id,
         label: metric.label,
@@ -245,10 +236,10 @@ export function resolveMetric(metric, items, { thresholds, maintenance = false }
         kind,
         aggregate: metric.aggregate,
         value,
-        // The smaller second line: absolute usage (`5/7.5 GB`), CPU cores and
-        // load, the network split, or a stopped/total count. Empty when the
-        // host does not publish the supporting items.
-        detail,
+        // Absolute context for a percentage ("5.0 GB of 7.8 GB"). Empty when
+        // the host does not report a total, which is normal for a hand-made
+        // /hostfs item with no sibling.
+        detail: buildDetail(metric, items, value, dominant?.item?.key_ ?? ''),
         severity,
         available: value !== null,
         sourceItemKey: dominant?.item?.key_ ?? '',
@@ -304,256 +295,51 @@ export function normaliseSeriesRows(rows) {
 /**
  * Compose the small secondary line under a tile value.
  *
- * The recipe is declared beside the metric in the catalog (`detail.kind` and
- * the item keys it reads); this function only turns the host's items into
- * text. Metrics without a recipe, and hosts without the supporting items,
- * return '', so the tile renders without a line rather than with a
- * placeholder.
+ * Only metrics that declare a `detail` spec get one: memory knows its total
+ * from a fixed item, disk derives it from the mount that produced the
+ * percentage. Everything else returns '', so the tile renders without the line
+ * rather than with a placeholder.
  *
  * @param {object} metric catalog entry
  * @param {object[]} items the host's `item.get` rows
- * @param {number|null} value the resolved headline value
- * @param {{sourceKey?: string, kind?: string, readings?: object[]}|string} [context]
- * @returns {string}
- */
-export function buildDetail(metric, items, value, context = {}) {
-    const spec = metric?.detail;
-    if (!spec || value === null) return '';
-
-    const {
-        sourceKey = '',
-        kind = metric.kind,
-        readings = [],
-    } = typeof context === 'string' ? { sourceKey: context } : context;
-
-    switch (spec.kind) {
-        case DETAIL_KIND.USAGE:
-            return buildUsageDetail(spec, items, value, sourceKey);
-        case DETAIL_KIND.CPU:
-            return buildCpuDetail(spec, items, kind);
-        case DETAIL_KIND.CORES:
-            return buildCoresDetail(spec, items);
-        case DETAIL_KIND.DIRECTIONS:
-            return buildDirectionsDetail(readings);
-        case DETAIL_KIND.STOPPED:
-            return buildStoppedDetail(spec, items);
-        case DETAIL_KIND.TOTAL:
-            return buildTotalDetail(spec, items);
-        default:
-            return '';
-    }
-}
-
-/**
- * `5/7.5 GB`, plus the disk mount when the recipe asks for it.
- *
- * The bytes come from the percentage applied to the total, not from a second
- * measurement, so the pair can never disagree with the headline number.
- *
- * @param {object} spec `detail` block from the catalog
- * @param {object[]} items
- * @param {number} value percentage
+ * @param {number|null} value the resolved percentage
  * @param {string} sourceKey the item key the percentage came from
  * @returns {string}
  */
-function buildUsageDetail(spec, items, value, sourceKey) {
-    const mount = spec.showMount ? mountFromSourceKey(sourceKey) : '';
-    const total = resolveTotalBytes(spec, items, sourceKey);
-    if (total === null) return mount;
+export function buildDetail(metric, items, value, sourceKey) {
+    const spec = metric?.detail;
+    if (!spec || value === null) return '';
 
-    const ratio = formatByteRatio((total * value) / 100, total);
-    if (!ratio) return mount;
-    return mount ? `${ratio} · ${mount}` : ratio;
+    const totalItem = findTotalItem(spec, items, sourceKey);
+    if (!totalItem) return '';
+
+    const total = Number.parseFloat(String(totalItem.lastvalue ?? ''));
+    if (!Number.isFinite(total) || total <= 0) return '';
+
+    return `${formatBytes((total * value) / 100)} of ${formatBytes(total)}`;
 }
 
 /**
- * `8 cores · load 0.42`. When CPU falls back to a load item, the load is the
- * headline and repeating it would be noise.
- *
- * @param {object} spec `detail` block from the catalog
- * @param {object[]} items
- * @param {string} kind resolved headline kind
- * @returns {string}
- */
-function buildCpuDetail(spec, items, kind) {
-    const segments = [];
-    const cores = coreSegment(spec, items);
-    if (cores) segments.push(cores);
-
-    if (kind !== VALUE_KIND.LOAD) {
-        const load = firstReading(items, spec.loadKeys);
-        if (load !== null) {
-            segments.push(format(_('load {value}'), { value: formatLoad(load) }));
-        }
-    }
-
-    return segments.join(' · ');
-}
-
-/**
- * @param {object} spec `detail` block from the catalog
- * @param {object[]} items
- * @returns {string}
- */
-function buildCoresDetail(spec, items) {
-    return coreSegment(spec, items);
-}
-
-/**
- * `8 cores`, or '' when the host does not publish a CPU count.
- *
- * @param {object} spec `detail` block from the catalog
- * @param {object[]} items
- * @returns {string}
- */
-function coreSegment(spec, items) {
-    const cores = firstReading(items, spec.coreKeys);
-    if (cores === null || cores <= 0) return '';
-
-    const count = Math.round(cores);
-    return format(ngettext('{count} core', '{count} cores', count), {
-        count: formatCount(count),
-    });
-}
-
-/**
- * Sum the selected readings per direction, then typeset them together so both
- * sides share one unit: `↓ 2.1 · ↑ 0.4 Mb/s`.
- *
- * @param {object[]} readings resolved source readings
- * @returns {string}
- */
-function buildDirectionsDetail(readings) {
-    let inbound = null;
-    let outbound = null;
-
-    for (const reading of readings ?? []) {
-        if (!Number.isFinite(reading?.value)) continue;
-        if (reading.direction === 'in') inbound = (inbound ?? 0) + reading.value;
-        if (reading.direction === 'out') outbound = (outbound ?? 0) + reading.value;
-    }
-
-    if (inbound === null && outbound === null) return '';
-    return formatBitRatePair(inbound, outbound);
-}
-
-/**
- * @param {object} spec `detail` block from the catalog
- * @param {object[]} items
- * @returns {string}
- */
-function buildStoppedDetail(spec, items) {
-    const stopped = firstReading(items, spec.stoppedKeys);
-    if (stopped === null || stopped < 0) return '';
-    return format(_('{count} stopped'), { count: formatCount(stopped) });
-}
-
-/**
- * @param {object} spec `detail` block from the catalog
- * @param {object[]} items
- * @returns {string}
- */
-function buildTotalDetail(spec, items) {
-    const total = firstReading(items, spec.totalKeys);
-    if (total === null || total <= 0) return '';
-    return format(_('{count} total'), { count: formatCount(total) });
-}
-
-/**
- * The byte total behind a `usage` detail, from whichever item the recipe names.
- *
  * @param {object} spec `detail` block from the catalog
  * @param {object[]} items
  * @param {string} sourceKey
- * @returns {number|null}
+ * @returns {object|null}
  */
-function resolveTotalBytes(spec, items, sourceKey) {
+function findTotalItem(spec, items, sourceKey) {
     const rows = Array.isArray(items) ? items : [];
 
-    const direct = firstReading(rows, spec.totalKeys);
-    if (direct !== null && direct > 0) return direct;
+    if (Array.isArray(spec.totalKeys)) {
+        return rows.find((item) => spec.totalKeys.includes(item.key_)) ?? null;
+    }
 
     if (spec.totalKeyFromSource) {
-        const rules = Array.isArray(spec.totalKeyFromSource)
-            ? spec.totalKeyFromSource
-            : [spec.totalKeyFromSource];
-        const key = String(sourceKey ?? '');
-
-        for (const { from, to } of rules) {
-            if (!key.endsWith(from)) continue;
-            const wanted = `${key.slice(0, -from.length)}${to}`;
-            const derived = firstReading(rows, [wanted]);
-            if (derived !== null && derived > 0) return derived;
-        }
-    }
-
-    // Some templates publish free bytes and a free percentage but not the
-    // total: total = available / (pavailable / 100).
-    if (spec.availableKeys && spec.availablePercentKeys) {
-        const available = firstReading(rows, spec.availableKeys);
-        const percent = firstReading(rows, spec.availablePercentKeys);
-        if (
-            available !== null &&
-            available > 0 &&
-            percent !== null &&
-            percent > 0 &&
-            percent <= 100
-        ) {
-            return available / (percent / 100);
-        }
+        const { from, to } = spec.totalKeyFromSource;
+        if (!sourceKey.endsWith(from)) return null;
+        const wanted = `${sourceKey.slice(0, -from.length)}${to}`;
+        return rows.find((item) => item.key_ === wanted) ?? null;
     }
 
     return null;
-}
-
-/**
- * First item among `keys` (in preference order) that carries a usable number.
- *
- * @param {object[]} items
- * @param {string[]|undefined} keys
- * @returns {number|null}
- */
-function firstReading(items, keys) {
-    const rows = Array.isArray(items) ? items : [];
-
-    for (const key of keys ?? []) {
-        const row = rows.find((item) => String(item?.key_ ?? '') === key);
-        const value = readNumber(row);
-        if (value !== null) return value;
-    }
-
-    return null;
-}
-
-/**
- * A numeric `lastvalue`, but only when the item has actually collected.
- * A fresh item answers `lastvalue: '0'` with `lastclock: '0'`, and that zero
- * must not be mistaken for a real reading.
- *
- * @param {object|undefined} row
- * @returns {number|null}
- */
-function readNumber(row) {
-    if (!row) return null;
-
-    const clock = Number.parseInt(String(row.lastclock ?? '0'), 10) || 0;
-    if (clock <= 0) return null;
-
-    const value = Number.parseFloat(String(row.lastvalue ?? ''));
-    return Number.isFinite(value) ? value : null;
-}
-
-/** `vfs.fs.size[/hostfs,pused]` → `/hostfs`. */
-const MOUNT_KEY_PATTERN = /^vfs\.fs(?:\.dependent)?\.size\[([^,\]]*),/;
-
-/**
- * @param {string} key
- * @returns {string}
- */
-function mountFromSourceKey(key) {
-    const match = MOUNT_KEY_PATTERN.exec(String(key ?? ''));
-    if (!match) return '';
-    return match[1].replace(/^"(.*)"$/, '$1');
 }
 
 /**

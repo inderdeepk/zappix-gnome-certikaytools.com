@@ -15,9 +15,6 @@ import { VALUE_KIND } from '../model/metricCatalog.js';
 /** Decimal places used for percentage headlines. */
 const PERCENT_DECIMALS = 0;
 
-/** IEC byte units, shared by `formatBytes` and `formatByteRatio`. */
-const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
-
 /**
  * Percent value, e.g. `42%`.
  *
@@ -50,9 +47,10 @@ export function formatBytes(value, { decimals = 1 } = {}) {
 
     const negative = numeric < 0;
     let magnitude = Math.abs(numeric);
+    const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
     let unitIndex = 0;
 
-    while (magnitude >= 1024 && unitIndex < BYTE_UNITS.length - 1) {
+    while (magnitude >= 1024 && unitIndex < units.length - 1) {
         magnitude /= 1024;
         unitIndex += 1;
     }
@@ -62,49 +60,7 @@ export function formatBytes(value, { decimals = 1 } = {}) {
             ? magnitude.toFixed(0)
             : magnitude.toFixed(decimals).replace(/\.0$/, '');
 
-    return `${negative ? '−' : ''}${text} ${BYTE_UNITS[unitIndex]}`;
-}
-
-/**
- * Two byte sizes sharing one unit, e.g. `5/7.5 GB`.
- *
- * The total decides the unit so the pair never mixes scales (`5 GB/750 MB`
- * reads as two unrelated numbers). A used figure that would round to zero in
- * that unit is shown as `<0.1` rather than a misleading `0`.
- *
- * @param {number|null|undefined} usedBytes
- * @param {number|null|undefined} totalBytes
- * @returns {string} empty string when either side is missing or the total is not positive
- */
-export function formatByteRatio(usedBytes, totalBytes) {
-    const used = numericOrNull(usedBytes);
-    const total = numericOrNull(totalBytes);
-    if (used === null || total === null || total <= 0) return '';
-
-    let magnitude = total;
-    let unitIndex = 0;
-    while (magnitude >= 1024 && unitIndex < BYTE_UNITS.length - 1) {
-        magnitude /= 1024;
-        unitIndex += 1;
-    }
-
-    const usedText = formatRatioAmount(used / 1024 ** unitIndex, unitIndex);
-    const totalText = formatRatioAmount(magnitude, unitIndex);
-    return `${usedText}/${totalText} ${BYTE_UNITS[unitIndex]}`;
-}
-
-/**
- * One side of a shared-unit ratio.
- *
- * @param {number} value already scaled into `unitIndex`
- * @param {number} unitIndex
- * @returns {string}
- */
-function formatRatioAmount(value, unitIndex) {
-    if (unitIndex === 0) return value.toFixed(0);
-    if (value > 0 && value < 0.1) return '<0.1';
-    if (value >= 100) return value.toFixed(0);
-    return value.toFixed(1).replace(/\.0$/, '');
+    return `${negative ? '−' : ''}${text} ${units[unitIndex]}`;
 }
 
 /**
@@ -137,60 +93,6 @@ export function formatBitRate(value) {
     }
 
     return `${magnitude.toFixed(0)} b/s`;
-}
-
-/**
- * Inbound and outbound rates sharing one unit, e.g. `↓ 2.1 · ↑ 0.4 Mb/s`.
- *
- * Both sides use the larger side's unit so the pair reads as one measurement;
- * a direction that rounds to zero is shown as `<0.1` instead of a bare `0`.
- * Either side may be null when the host publishes only one direction.
- *
- * @param {number|null|undefined} inbound bits per second
- * @param {number|null|undefined} outbound bits per second
- * @returns {string}
- */
-export function formatBitRatePair(inbound, outbound) {
-    const values = [numericOrNull(inbound), numericOrNull(outbound)];
-    const finite = values.filter((value) => value !== null);
-    if (finite.length === 0) return '';
-
-    const largest = Math.max(...finite.map((value) => Math.abs(value)));
-    let divisor = 1;
-    let unit = 'b/s';
-
-    if (largest >= 1e9) {
-        divisor = 1e9;
-        unit = 'Gb/s';
-    } else if (largest >= 1e6) {
-        divisor = 1e6;
-        unit = 'Mb/s';
-    } else if (largest >= 1e3) {
-        divisor = 1e3;
-        unit = 'kb/s';
-    }
-
-    const segments = [];
-    if (values[0] !== null) {
-        segments.push(`↓ ${formatRateAmount(values[0] / divisor)}`);
-    }
-    if (values[1] !== null) {
-        segments.push(`↑ ${formatRateAmount(values[1] / divisor)}`);
-    }
-
-    return `${segments.join(' · ')} ${unit}`;
-}
-
-/**
- * One side of a shared-unit rate pair.
- *
- * @param {number} value already divided by the chosen unit's divisor
- * @returns {string}
- */
-function formatRateAmount(value) {
-    if (value > 0 && value < 0.1) return '<0.1';
-    const magnitude = Math.abs(value);
-    return magnitude >= 100 ? value.toFixed(0) : value.toFixed(1).replace(/\.0$/, '');
 }
 
 /**
@@ -381,21 +283,6 @@ export function formatBytesCompact(value) {
             ? magnitude.toFixed(0)
             : magnitude.toFixed(1).replace(/\.0$/, '');
     return `${text}${units[index]}`;
-}
-
-/**
- * A finite number, or null for a missing/blank value.
- *
- * `Number(null)` is 0, which would turn a missing direction into a real zero
- * reading in the pair formatters above.
- *
- * @param {unknown} value
- * @returns {number|null}
- */
-function numericOrNull(value) {
-    if (value === null || value === undefined || value === '') return null;
-    const numeric = Number(value);
-    return Number.isFinite(numeric) ? numeric : null;
 }
 
 /**

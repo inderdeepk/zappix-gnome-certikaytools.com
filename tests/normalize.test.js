@@ -21,7 +21,7 @@ import {
     selectItemsForMetric,
     summariseProblems,
 } from '../src/model/normalize.js';
-import { AGGREGATE, getMetric, TRANSFORM, VALUE_KIND } from '../src/model/metricCatalog.js';
+import { AGGREGATE, getMetric, TRANSFORM } from '../src/model/metricCatalog.js';
 import { SEVERITY } from '../src/model/severity.js';
 
 const THRESHOLDS = { warn: 75, crit: 90 };
@@ -1037,7 +1037,7 @@ await runTests([
     [
         'resolveMetric adds the absolute amount behind the memory percentage',
         () => {
-            // 8 GiB total, 63 % used → the small line reads "5/8 GB".
+            // 8 GiB total, 63 % used → the small line reads "5 GB of 8 GB".
             const view = resolveMetric(
                 getMetric('memory'),
                 [
@@ -1061,41 +1061,7 @@ await runTests([
             );
 
             assertEqual(view.value, 63);
-            assertEqual(view.detail, '5/8 GB');
-        },
-    ],
-    [
-        'resolveMetric derives a missing memory total from available bytes',
-        () => {
-            // Some templates publish free bytes and a free percentage but no
-            // total. 3 GiB available at 37.5 % free describes an 8 GiB host.
-            const view = resolveMetric(
-                getMetric('memory'),
-                [
-                    item({
-                        itemid: 'mem',
-                        key_: 'vm.memory.util',
-                        units: '%',
-                        lastvalue: '63',
-                    }),
-                    item({
-                        itemid: 'available',
-                        key_: 'vm.memory.size[available]',
-                        value_type: '3',
-                        units: 'B',
-                        lastvalue: String(3 * 1024 ** 3),
-                    }),
-                    item({
-                        itemid: 'pavailable',
-                        key_: 'vm.memory.size[pavailable]',
-                        units: '%',
-                        lastvalue: '37.5',
-                    }),
-                ],
-                { thresholds: THRESHOLDS },
-            );
-
-            assertEqual(view.detail, '5/8 GB');
+            assertEqual(view.detail, '5 GB of 8 GB');
         },
     ],
     [
@@ -1126,14 +1092,14 @@ await runTests([
             );
 
             assertEqual(view.sourceItemKey, 'vfs.fs.size[/hostfs,pused]');
-            assertEqual(view.detail, '42.9/64 GB · /hostfs');
+            assertEqual(view.detail, '42.9 GB of 64 GB');
         },
     ],
     [
-        'resolveMetric still names the mount when the host reports no total',
+        'resolveMetric omits the detail when the host reports no total',
         () => {
             // The production /hostfs item is created by hand with no sibling;
-            // the mount is still worth a second line.
+            // the tile must render without a second line, not with a placeholder.
             const view = resolveMetric(
                 getMetric('disk'),
                 [
@@ -1149,241 +1115,27 @@ await runTests([
             );
 
             assertEqual(view.value, 55);
-            assertEqual(view.detail, '/hostfs');
-        },
-    ],
-    [
-        'resolveMetric derives the disk total from a free-percentage fallback',
-        () => {
-            const view = resolveMetric(
-                getMetric('disk'),
-                [
-                    item({
-                        itemid: 'free',
-                        key_: 'vfs.fs.size[/hostfs,pfree]',
-                        units: '%',
-                        lastvalue: '31',
-                    }),
-                    item({
-                        itemid: 'total',
-                        key_: 'vfs.fs.size[/hostfs,total]',
-                        value_type: '3',
-                        units: 'B',
-                        lastvalue: String(64 * 1024 ** 3),
-                    }),
-                ],
-                { thresholds: THRESHOLDS },
-            );
-
-            assertEqual(view.value, 69);
-            assertEqual(view.detail, '44.2/64 GB · /hostfs');
-        },
-    ],
-    [
-        'resolveMetric adds core count and load to the CPU tile',
-        () => {
-            const view = resolveMetric(
-                getMetric('cpu'),
-                [
-                    item({
-                        itemid: 'cpu',
-                        key_: 'system.cpu.util',
-                        units: '%',
-                        lastvalue: '42',
-                    }),
-                    item({
-                        itemid: 'cores',
-                        key_: 'system.cpu.num',
-                        value_type: '3',
-                        lastvalue: '8',
-                    }),
-                    item({
-                        itemid: 'load',
-                        key_: 'system.cpu.load[all,avg1]',
-                        lastvalue: '0.42',
-                    }),
-                ],
-                { thresholds: THRESHOLDS },
-            );
-
-            assertEqual(view.value, 42);
-            assertEqual(view.detail, '8 cores · load 0.42');
-        },
-    ],
-    [
-        'resolveMetric does not repeat load when load is the CPU headline',
-        () => {
-            const view = resolveMetric(
-                getMetric('cpu'),
-                [
-                    item({
-                        itemid: 'load',
-                        key_: 'system.cpu.load[all,avg1]',
-                        lastvalue: '1.5',
-                    }),
-                    item({
-                        itemid: 'cores',
-                        key_: 'system.cpu.num',
-                        value_type: '3',
-                        lastvalue: '4',
-                    }),
-                ],
-                { thresholds: THRESHOLDS },
-            );
-
-            assertEqual(view.kind, VALUE_KIND.LOAD);
-            assertEqual(view.value, 1.5);
-            assertEqual(view.detail, '4 cores');
-        },
-    ],
-    [
-        'resolveMetric splits network throughput into inbound and outbound',
-        () => {
-            const view = resolveMetric(
-                getMetric('network'),
-                [
-                    item({
-                        itemid: 'in',
-                        key_: 'net.if.in["eth0"]',
-                        value_type: '3',
-                        units: 'bps',
-                        lastvalue: '2100000',
-                    }),
-                    item({
-                        itemid: 'out',
-                        key_: 'net.if.out["eth0"]',
-                        value_type: '3',
-                        units: 'bps',
-                        lastvalue: '400000',
-                    }),
-                ],
-                { thresholds: THRESHOLDS },
-            );
-
-            assertEqual(view.value, 2500000);
-            assertEqual(view.detail, '↓ 2.1 · ↑ 0.4 Mb/s');
-        },
-    ],
-    [
-        'resolveMetric shows the stopped container count beside the running one',
-        () => {
-            const view = resolveMetric(
-                getMetric('containers'),
-                [
-                    item({
-                        itemid: 'running',
-                        key_: 'docker.containers.running',
-                        value_type: '3',
-                        lastvalue: '21',
-                    }),
-                    item({
-                        itemid: 'stopped',
-                        key_: 'docker.containers.stopped',
-                        value_type: '3',
-                        lastvalue: '2',
-                    }),
-                ],
-                { thresholds: THRESHOLDS },
-            );
-
-            assertEqual(view.value, 21);
-            assertEqual(view.detail, '2 stopped');
-        },
-    ],
-    [
-        'resolveMetric adds the total process count to the running headline',
-        () => {
-            const view = resolveMetric(
-                getMetric('processes'),
-                [
-                    item({
-                        itemid: 'running',
-                        key_: 'proc.num[,,run]',
-                        value_type: '3',
-                        lastvalue: '250',
-                    }),
-                    item({
-                        itemid: 'total',
-                        key_: 'proc.num',
-                        value_type: '3',
-                        lastvalue: '312',
-                    }),
-                ],
-                { thresholds: THRESHOLDS },
-            );
-
-            assertEqual(view.value, 250);
-            assertEqual(view.detail, '312 total');
-        },
-    ],
-    [
-        'resolveMetric adds the swap usage ratio',
-        () => {
-            const view = resolveMetric(
-                getMetric('swap'),
-                [
-                    item({
-                        itemid: 'used',
-                        key_: 'system.swap.size[,pused]',
-                        units: '%',
-                        lastvalue: '25',
-                    }),
-                    item({
-                        itemid: 'total',
-                        key_: 'system.swap.size[,total]',
-                        value_type: '3',
-                        units: 'B',
-                        lastvalue: String(4 * 1024 ** 3),
-                    }),
-                ],
-                { thresholds: THRESHOLDS },
-            );
-
-            assertEqual(view.detail, '1/4 GB');
-        },
-    ],
-    [
-        'resolveMetric adds the core count to the Load tile',
-        () => {
-            const view = resolveMetric(
-                getMetric('load'),
-                [
-                    item({
-                        itemid: 'load',
-                        key_: 'system.cpu.load[all,avg1]',
-                        lastvalue: '1.5',
-                    }),
-                    item({
-                        itemid: 'cores',
-                        key_: 'system.cpu.num',
-                        value_type: '3',
-                        lastvalue: '4',
-                    }),
-                ],
-                { thresholds: THRESHOLDS },
-            );
-
-            assertEqual(view.detail, '4 cores');
+            assertEqual(view.detail, '');
         },
     ],
     [
         'resolveMetric never invents a detail for metrics without a spec',
         () => {
             const view = resolveMetric(
-                getMetric('uptime'),
+                getMetric('network'),
                 [
                     item({
-                        itemid: 'uptime',
-                        key_: 'system.uptime',
+                        itemid: 'net',
+                        key_: 'net.if.in["eth0"]',
                         value_type: '3',
-                        units: 's',
-                        lastvalue: '3600',
+                        units: 'bps',
+                        lastvalue: '1000',
+                        lastclock: '1700000000',
                     }),
                 ],
                 { thresholds: THRESHOLDS },
             );
 
-            assertEqual(view.value, 3600);
             assertEqual(view.detail, '');
         },
     ],

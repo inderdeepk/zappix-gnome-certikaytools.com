@@ -64,17 +64,9 @@ If it fails, the message names the layer:
 ```
 CPU              ▲       ← metric name, trend caret (up/down over the window)
 87%                      ← current value, coloured by severity
-8 cores · load 0.42      ← smaller second line: absolute context
 ▁▂▃▅▇▆▅▃▂▁▂▃▅▇          ← sparkline for the configured window
 ▬▬▬▬▬▬▬▬▬▬▬▬░░          ← utilization bar (percentage metrics only)
 ```
-
-The second line is deliberately smaller and quieter than the headline. Memory
-and Swap show used/total (`5/7.5 GB`), Disk adds the mount the figure belongs
-to (`42.9/64 GB · /var`), Network splits the two directions
-(`↓ 2.1 · ↑ 0.4 Mb/s`), Containers shows how many are stopped, and Processes
-shows the total process count. A host that does not publish the supporting
-item simply has no second line.
 
 Hover a tile to see the Zabbix item it came from — the name and the exact item
 key — which is what you need to find it in the frontend.
