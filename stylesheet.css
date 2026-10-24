@@ -1,0 +1,568 @@
+/* ════════════════════════════════════════════════════════════════════════
+   Zappix — server monitor for the GNOME top panel
+   ════════════════════════════════════════════════════════════════════════
+
+   Structure
+     • Design tokens (as comments — St has no CSS custom properties)
+     • Panel icon
+     • Popup surface + header
+     • Server switcher
+     • Server card + host rows
+     • Metric tiles, sparkline, meter
+     • Severity colours
+     • Problems list + footer
+     • Empty state
+     • Light theme overrides
+
+   Design tokens (dark):
+     surface          rgba(20, 22, 28, 0.94)
+     surface-raised   rgba(255, 255, 255, 0.045)
+     surface-hover    rgba(255, 255, 255, 0.085)
+     border           rgba(255, 255, 255, 0.085)
+     border-strong    rgba(255, 255, 255, 0.16)
+     text             rgba(255, 255, 255, 0.94)
+     text-dim         rgba(255, 255, 255, 0.62)
+     text-faint       rgba(255, 255, 255, 0.42)
+
+   Contrast targets: body ≥ 7:1, secondary ≥ 4.5:1, meta ≥ 3:1.
+
+   St limitations respected here: no CSS variables, no flex-wrap, no
+   text-transform, no percentage lengths outside font-size, and no
+   box-shadow/gradient on large scrolling surfaces (Clutter's offscreen
+   framebuffer path). Radii and shadows are confined to small, fixed actors.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Panel icon ─────────────────────────────────────────────────────── */
+
+/* One mark: ring gauge + value (widgets/panelGauge.js). Spacing, font and
+   weight follow the panel so it sits like the clock or the battery. */
+
+.zappix-panel-button {
+    /* The panel gives buttons a fixed height; keep the content centred without
+       fighting it. */
+    padding: 0 2px;
+}
+
+.zappix-panel-box {
+    spacing: 5px;
+}
+
+.zappix-panel-gauge {
+    /* Same footprint as a system status icon; the drawing scales with it. */
+    width: 16px;
+    height: 16px;
+}
+
+.zappix-panel-value {
+    /* Colour, size and weight are inherited from the panel theme so the value
+       matches its neighbours; it is tinted inline only when alarming.
+       Tabular figures stop the panel shifting as the number changes. */
+    font-feature-settings: "tnum";
+}
+
+/* ── Popup surface ──────────────────────────────────────────────────── */
+
+.zappix-menu-content {
+    background-color: rgba(20, 22, 28, 0.94);
+    border: 1px solid rgba(255, 255, 255, 0.085);
+    border-radius: 18px;
+    padding: 14px;
+    /* 460px keeps four tiles on one row at comfortable density while leaving
+       the popup narrower than the screen on every common resolution. */
+    min-width: 420px;
+    max-width: 520px;
+}
+
+.zappix-dashboard {
+    spacing: 12px;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────── */
+
+.zappix-header {
+    spacing: 8px;
+    padding: 0 2px 2px 2px;
+}
+
+.zappix-title {
+    font-size: 1.15em;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.94);
+    letter-spacing: 0.2px;
+}
+
+.zappix-icon-button {
+    padding: 5px;
+    border-radius: 9px;
+    background-color: transparent;
+    transition-duration: 120ms;
+}
+
+.zappix-icon-button:hover {
+    background-color: rgba(255, 255, 255, 0.085);
+}
+
+.zappix-icon-button:active {
+    background-color: rgba(255, 255, 255, 0.14);
+}
+
+.zappix-icon-button-icon {
+    icon-size: 16px;
+    color: rgba(255, 255, 255, 0.76);
+}
+
+/* ── Server switcher ────────────────────────────────────────────────── */
+
+.zappix-switcher {
+    spacing: 6px;
+    padding: 0 2px;
+}
+
+.zappix-switcher-pill {
+    border-radius: 99px;
+    padding: 5px 11px;
+    background-color: rgba(255, 255, 255, 0.045);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    transition-duration: 140ms;
+}
+
+.zappix-switcher-pill:hover {
+    background-color: rgba(255, 255, 255, 0.085);
+}
+
+.zappix-switcher-pill-active {
+    background-color: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.zappix-switcher-pill-content {
+    spacing: 6px;
+}
+
+.zappix-switcher-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 99px;
+}
+
+.zappix-switcher-label {
+    font-size: 0.9em;
+    color: rgba(255, 255, 255, 0.86);
+}
+
+.zappix-switcher-badge {
+    font-size: 0.78em;
+    font-weight: bold;
+    color: #16181f;
+    background-color: #f7737d;
+    border-radius: 99px;
+    padding: 0 5px;
+}
+
+/* ── Server card ────────────────────────────────────────────────────── */
+
+.zappix-card {
+    spacing: 10px;
+}
+
+.zappix-card-head {
+    spacing: 9px;
+    padding: 0 2px;
+}
+
+.zappix-card-titles {
+    spacing: 1px;
+}
+
+.zappix-card-title {
+    font-size: 1.02em;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.94);
+}
+
+.zappix-card-subtitle {
+    font-size: 0.82em;
+    color: rgba(255, 255, 255, 0.58);
+}
+
+.zappix-scroll {
+    /* A scrollbar would otherwise reserve space even when unused. */
+    -st-vfade-offset: 12px;
+}
+
+.zappix-host-list {
+    spacing: 12px;
+}
+
+/* ── Host rows ──────────────────────────────────────────────────────── */
+
+.zappix-host {
+    spacing: 7px;
+}
+
+.zappix-host-head {
+    spacing: 8px;
+    padding: 0 2px;
+}
+
+.zappix-host-identity {
+    spacing: 8px;
+}
+
+.zappix-host-name {
+    font-size: 0.9em;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.82);
+}
+
+.zappix-host-endpoint {
+    font-size: 0.78em;
+    color: rgba(255, 255, 255, 0.42);
+}
+
+.zappix-tile-rows {
+    spacing: 8px;
+}
+
+.zappix-tile-row {
+    spacing: 8px;
+}
+
+/* ── Metric tile ────────────────────────────────────────────────────── */
+
+.zappix-tile {
+    background-color: rgba(255, 255, 255, 0.045);
+    border: 1px solid rgba(255, 255, 255, 0.065);
+    border-radius: 12px;
+    padding: 9px 10px 8px 10px;
+    spacing: 2px;
+    min-width: 112px;
+    transition-duration: 160ms;
+}
+
+.zappix-tile:hover {
+    background-color: rgba(255, 255, 255, 0.075);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.zappix-tile-compact {
+    padding: 7px 8px 6px 8px;
+    min-width: 96px;
+    border-radius: 10px;
+}
+
+.zappix-tile-spacious {
+    padding: 12px 13px 11px 13px;
+    min-width: 128px;
+    border-radius: 14px;
+}
+
+.zappix-tile-spacer {
+    /* Keeps an odd final tile at half width instead of stretching it. */
+    min-width: 112px;
+}
+
+.zappix-tile-head {
+    spacing: 4px;
+}
+
+.zappix-tile-label {
+    font-size: 0.76em;
+    color: rgba(255, 255, 255, 0.56);
+    letter-spacing: 0.4px;
+}
+
+.zappix-tile-trend {
+    font-size: 0.7em;
+    color: rgba(255, 255, 255, 0.38);
+}
+
+.zappix-tile-value {
+    font-size: 1.32em;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.94);
+}
+
+/* The absolute figure behind a percentage, e.g. "5.0 GB of 7.8 GB". Sits
+   tight under the number so the pair reads as one value. */
+.zappix-tile-detail {
+    font-size: 0.76em;
+    color: rgba(255, 255, 255, 0.55);
+    margin-top: -3px;
+}
+
+.zappix-sparkline {
+    /* Height comes from JS (density tokens); this is only a floor. */
+    min-height: 18px;
+    margin-top: 1px;
+}
+
+.zappix-meter {
+    min-height: 4px;
+    margin-top: 4px;
+}
+
+/* ── Status dots ────────────────────────────────────────────────────── */
+
+.zappix-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 99px;
+    background-color: #8c94a1;
+}
+
+.zappix-dot-small {
+    width: 6px;
+    height: 6px;
+}
+
+.zappix-dot-large {
+    width: 9px;
+    height: 9px;
+}
+
+/* ── Severity ───────────────────────────────────────────────────────────
+   One vocabulary for dots, pills and text. Kept out of the accent system on
+   purpose: green/amber/red is the signal.
+   ──────────────────────────────────────────────────────────────────── */
+
+.zappix-sev-ok {
+    background-color: #7ee787;
+}
+
+.zappix-sev-warn {
+    background-color: #f2bc5c;
+}
+
+.zappix-sev-crit {
+    background-color: #f7737d;
+}
+
+.zappix-sev-unknown {
+    background-color: #8c94a1;
+}
+
+.zappix-sev-maintenance {
+    background-color: #949eb8;
+}
+
+.zappix-text-ok {
+    color: #7ee787;
+}
+
+.zappix-text-warn {
+    color: #f2bc5c;
+}
+
+.zappix-text-crit {
+    color: #f7737d;
+}
+
+.zappix-text-unknown {
+    color: rgba(255, 255, 255, 0.42);
+}
+
+.zappix-text-maintenance {
+    color: #949eb8;
+}
+
+/* ── Problems ───────────────────────────────────────────────────────── */
+
+.zappix-problems {
+    spacing: 3px;
+    padding: 6px 8px;
+    background-color: rgba(255, 255, 255, 0.035);
+    border-radius: 10px;
+}
+
+.zappix-problem-row {
+    spacing: 8px;
+}
+
+.zappix-problem-pill {
+    font-size: 0.68em;
+    font-weight: bold;
+    color: #16181f;
+    border-radius: 5px;
+    padding: 1px 5px;
+}
+
+.zappix-problem-name {
+    font-size: 0.82em;
+    color: rgba(255, 255, 255, 0.82);
+}
+
+.zappix-problem-time {
+    font-size: 0.76em;
+    color: rgba(255, 255, 255, 0.38);
+}
+
+.zappix-problem-more {
+    font-size: 0.76em;
+    color: rgba(255, 255, 255, 0.42);
+    padding-left: 2px;
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────── */
+
+.zappix-card-footer {
+    spacing: 8px;
+    padding: 0 2px;
+}
+
+.zappix-footer-label {
+    font-size: 0.76em;
+    color: rgba(255, 255, 255, 0.38);
+}
+
+.zappix-link-button {
+    padding: 3px 8px;
+    border-radius: 7px;
+    background-color: transparent;
+    transition-duration: 120ms;
+}
+
+.zappix-link-button:hover {
+    background-color: rgba(255, 255, 255, 0.085);
+}
+
+.zappix-link-button-label {
+    font-size: 0.78em;
+    color: #7aa2f7;
+}
+
+/* ── Empty state ────────────────────────────────────────────────────── */
+
+.zappix-empty {
+    spacing: 8px;
+    padding: 26px 18px 22px 18px;
+}
+
+.zappix-empty-icon {
+    icon-size: 42px;
+    color: rgba(255, 255, 255, 0.28);
+    margin-bottom: 4px;
+}
+
+.zappix-empty-title {
+    font-size: 1.02em;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.zappix-empty-body {
+    font-size: 0.86em;
+    color: rgba(255, 255, 255, 0.56);
+    max-width: 300px;
+    text-align: center;
+}
+
+.zappix-primary-button {
+    background-color: #7aa2f7;
+    border-radius: 99px;
+    padding: 7px 16px;
+    margin-top: 8px;
+    transition-duration: 140ms;
+}
+
+.zappix-primary-button:hover {
+    background-color: #93b4f9;
+}
+
+.zappix-primary-button-label {
+    font-size: 0.88em;
+    font-weight: bold;
+    color: #14161c;
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   Light theme
+   ════════════════════════════════════════════════════════════════════════
+   Applied by the indicator from org.gnome.desktop.interface color-scheme.
+   Only the surface, border and text tokens change; severity colours are
+   identical in both themes so a screenshot of an alert always looks the same.
+   ════════════════════════════════════════════════════════════════════════ */
+
+.zappix-light .zappix-menu-content,
+.zappix-menu-content.zappix-light {
+    background-color: rgba(250, 250, 252, 0.97);
+    border-color: rgba(0, 0, 0, 0.09);
+}
+
+.zappix-light .zappix-title,
+.zappix-light .zappix-card-title,
+.zappix-light .zappix-host-name,
+.zappix-light .zappix-tile-value,
+.zappix-light .zappix-empty-title {
+    color: rgba(20, 22, 28, 0.94);
+}
+
+.zappix-light .zappix-tile-detail {
+    color: rgba(20, 22, 28, 0.55);
+}
+
+.zappix-light .zappix-card-subtitle,
+.zappix-light .zappix-empty-body {
+    color: rgba(20, 22, 28, 0.62);
+}
+
+.zappix-light .zappix-tile-label,
+.zappix-light .zappix-host-endpoint,
+.zappix-light .zappix-footer-label,
+.zappix-light .zappix-problem-time,
+.zappix-light .zappix-problem-more {
+    color: rgba(20, 22, 28, 0.5);
+}
+
+.zappix-light .zappix-tile {
+    background-color: rgba(0, 0, 0, 0.035);
+    border-color: rgba(0, 0, 0, 0.07);
+}
+
+.zappix-light .zappix-tile:hover {
+    background-color: rgba(0, 0, 0, 0.06);
+    border-color: rgba(0, 0, 0, 0.12);
+}
+
+.zappix-light .zappix-icon-button:hover,
+.zappix-light .zappix-link-button:hover {
+    background-color: rgba(0, 0, 0, 0.06);
+}
+
+.zappix-light .zappix-icon-button-icon {
+    color: rgba(20, 22, 28, 0.7);
+}
+
+.zappix-light .zappix-switcher-pill {
+    background-color: rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.06);
+}
+
+.zappix-light .zappix-switcher-pill-active {
+    background-color: rgba(0, 0, 0, 0.09);
+    border-color: rgba(0, 0, 0, 0.14);
+}
+
+.zappix-light .zappix-switcher-label {
+    color: rgba(20, 22, 28, 0.86);
+}
+
+.zappix-light .zappix-problems {
+    background-color: rgba(0, 0, 0, 0.03);
+}
+
+.zappix-light .zappix-problem-name {
+    color: rgba(20, 22, 28, 0.82);
+}
+
+.zappix-light .zappix-tile-trend {
+    color: rgba(20, 22, 28, 0.4);
+}
+
+.zappix-light .zappix-text-unknown {
+    color: rgba(20, 22, 28, 0.45);
+}
+
+.zappix-light .zappix-empty-icon {
+    color: rgba(20, 22, 28, 0.26);
+}

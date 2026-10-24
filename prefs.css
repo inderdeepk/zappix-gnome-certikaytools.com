@@ -1,0 +1,49 @@
+/* Preferences-window styling for Zappix.
+ *
+ * Deliberately minimal: libadwaita already provides the layout, spacing and
+ * light/dark handling. Only the pieces that carry Zappix-specific meaning are
+ * styled here — the connection-test result and the "repaired settings" warning
+ * — so the preferences window keeps looking like a native GNOME settings page.
+ *
+ * Severity colours match the shell palette in stylesheet.css so a connection
+ * that is reported green in the popup is green here too.
+ */
+
+.zappix-status-ok {
+    color: #2f9e44;
+}
+
+.zappix-status-warn {
+    color: #b57e10;
+}
+
+.zappix-status-crit {
+    color: #d64550;
+}
+
+.zappix-status-unknown {
+    color: #6c757d;
+}
+
+.zappix-warning-row {
+    border-radius: 9px;
+    background-color: alpha(currentColor, 0.06);
+}
+
+/* The endpoint preview is a URL: monospace makes a wrong path obvious. */
+.zappix-endpoint {
+    font-family: monospace;
+    font-size: 0.9em;
+}
+
+/* Validation banner at the top of the server dialog. It is the only feedback
+   that a Save did not happen, so it gets a surface, not just a colour. */
+.zappix-alert-warn {
+    color: #b57e10;
+    background-color: alpha(#b57e10, 0.08);
+}
+
+.zappix-alert-crit {
+    color: #d64550;
+    background-color: alpha(#d64550, 0.1);
+}

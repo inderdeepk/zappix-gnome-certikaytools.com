@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.zappix" path="/org/gnome/shell/extensions/zappix/">
+
+    <!-- ===================================================================
+         Servers
+         ===================================================================
+         The server list is stored as one JSON document so that adding or
+         removing a server never requires a schema migration: the schema owns
+         the shape of the list, not its length. `src/shared/serverStore.js` is
+         the single reader/writer and validates every field on load, so a
+         corrupt document degrades to "no servers" instead of breaking the
+         extension.
+         =================================================================== -->
+    <key name="servers" type="s">
+      <default>'[]'</default>
+      <summary>Configured Servers</summary>
+      <description>JSON array of Zabbix server definitions (id, label, baseUrl, apiPath, authMode, username, hostFilter, color, enabled). API tokens are never stored here — they live in the login keyring (see src/shared/secrets.js).</description>
+    </key>
+
+    <key name="active-server-id" type="s">
+      <default>''</default>
+      <summary>Active Server</summary>
+      <description>Id of the server whose card is expanded in the dropdown. An empty value, or an id that no longer exists, falls back to the first enabled server.</description>
+    </key>
+
+    <!-- ===================================================================
+         Dropdown behaviour
+         =================================================================== -->
+    <key name="open-on-hover" type="b">
+      <default>true</default>
+      <summary>Open on Hover</summary>
+      <description>Open the dashboard when the pointer rests on the panel icon. Turn this off to require a click.</description>
+    </key>
+
+    <key name="hover-open-delay-ms" type="i">
+      <default>220</default>
+      <summary>Hover Open Delay (ms)</summary>
+      <description>How long the pointer must rest on the panel icon before the dropdown opens. Lower values feel snappier but open the menu on an accidental pass-over.</description>
+    </key>
+
+    <key name="hover-close-delay-ms" type="i">
+      <default>360</default>
+      <summary>Hover Close Delay (ms)</summary>
+      <description>Grace period before the dropdown closes after the pointer leaves the icon or the menu. Keeps the menu open while the pointer crosses the gap between them.</description>
+    </key>
+
+    <key name="pin-on-open" type="b">
+      <default>false</default>
+      <summary>Keep Open Until Dismissed</summary>
+      <description>When enabled the dropdown ignores the hover close timer and stays open until you click elsewhere or press Escape. Useful while reading long host lists.</description>
+    </key>
+
+    <!-- ===================================================================
+         Polling
+         =================================================================== -->
+    <key name="poll-interval-seconds" type="i">
+      <default>30</default>
+      <summary>Refresh Interval (seconds)</summary>
+      <description>How often live values are fetched while the panel is idle. The dropdown refreshes immediately on open regardless of this setting. Values below 10 seconds are clamped to 10 to protect the Zabbix server.</description>
+    </key>
+
+    <key name="history-window-minutes" type="i">
+      <default>60</default>
+      <summary>Sparkline Window (minutes)</summary>
+      <description>Width of the trend history shown behind each metric. 60 minutes gives a one-hour sparkline; 1440 covers a full day.</description>
+    </key>
+
+    <key name="timeout-seconds" type="i">
+      <default>10</default>
+      <summary>Request Timeout (seconds)</summary>
+      <description>Per-request timeout for Zabbix API calls. Raise it for servers behind a slow VPN or tunnel.</description>
+    </key>
+
+    <key name="max-hosts-per-server" type="i">
+      <default>20</default>
+      <summary>Maximum Hosts per Server</summary>
+      <description>Upper bound on the number of hosts fetched per server. Prevents a large Zabbix installation from making the dropdown unbounded.</description>
+    </key>
+
+    <!-- ===================================================================
+         TLS / trust
+         =================================================================== -->
+    <key name="insecure-tls" type="b">
+      <default>false</default>
+      <summary>Allow Untrusted Certificates</summary>
+      <description>Accept self-signed or otherwise untrusted TLS certificates for every server. Prefer fixing the certificate chain; only enable this on a private network you control.</description>
+    </key>
+
+    <!-- ===================================================================
+         Metrics shown
+         =================================================================== -->
+    <key name="metrics-enabled" type="as">
+      <default>['cpu', 'memory', 'disk', 'network', 'containers']</default>
+      <summary>Visible Metrics</summary>
+      <description>Which utilization tiles are shown for each host. Valid ids: cpu, memory, swap, disk, network, containers, load, uptime, processes. Unknown ids are ignored.</description>
+    </key>
+
+    <key name="warn-threshold" type="i">
+      <default>75</default>
+      <summary>Warning Threshold (%)</summary>
+      <description>Percentage utilization at which a metric turns amber.</description>
+    </key>
+
+    <key name="critical-threshold" type="i">
+      <default>90</default>
+      <summary>Critical Threshold (%)</summary>
+      <description>Percentage utilization at which a metric turns red. Values at or below the warning threshold are ignored, so the critical colour is always reachable.</description>
+    </key>
+
+    <!-- ===================================================================
+         Panel indicator
+         =================================================================== -->
+    <key name="show-panel-value" type="b">
+      <default>true</default>
+      <summary>Show Value in Panel</summary>
+      <description>Display the selected metric's number next to the panel gauge. The ring shows the level either way; the number makes it exact.</description>
+    </key>
+
+    <key name="panel-metric" type="s">
+      <default>'cpu'</default>
+      <summary>Panel Metric</summary>
+      <description>Metric summarized by the panel gauge: cpu, memory, disk, or problems. The value is taken from the active server's first host; problems closes the ring and colours it by the worst open problem.</description>
+    </key>
+
+    <key name="panel-alert-on-problems" type="b">
+      <default>true</default>
+      <summary>Flag Open Problems in Panel</summary>
+      <description>Notch a dot into the panel gauge's rim, in the colour of the worst problem, when the active server reports unacknowledged problems. The metric's own colour is left alone.</description>
+    </key>
+
+    <!-- ===================================================================
+         Appearance
+         =================================================================== -->
+    <key name="density" type="s">
+      <default>'comfortable'</default>
+      <summary>Layout Density</summary>
+      <description>Tile layout: compact, comfortable, or spacious. Compact fits more hosts without scrolling.</description>
+    </key>
+
+    <key name="accent-colour" type="s">
+      <default>'aurora'</default>
+      <summary>Accent Colour</summary>
+      <description>Dashboard accent palette: aurora, ocean, ember, or graphite. Applies to highlights and sparkline fills; severity colours stay green/amber/red.</description>
+    </key>
+
+    <key name="reduce-motion" type="b">
+      <default>false</default>
+      <summary>Reduce Motion</summary>
+      <description>Disable sparkline and hover animations. Enabled automatically when GNOME's own animations are turned off.</description>
+    </key>
+
+    <!-- ===================================================================
+         Notifications
+         =================================================================== -->
+    <key name="notify-on-critical" type="b">
+      <default>false</default>
+      <summary>Notify on Critical Utilization</summary>
+      <description>Send a desktop notification when a host crosses the critical threshold while the dropdown is closed.</description>
+    </key>
+
+    <key name="notify-on-new-problems" type="b">
+      <default>true</default>
+      <summary>Notify on New Problems</summary>
+      <description>Send a desktop notification when a server reports a problem that was not present on the previous poll.</description>
+    </key>
+
+    <key name="notification-cooldown-minutes" type="i">
+      <default>15</default>
+      <summary>Notification Cooldown (minutes)</summary>
+      <description>Minimum time between repeated notifications for the same metric so a sustained alert does not spam the desktop.</description>
+    </key>
+
+    <!-- ===================================================================
+         Diagnostics
+         =================================================================== -->
+    <key name="debug-logging" type="b">
+      <default>false</default>
+      <summary>Verbose Logging</summary>
+      <description>Log every Zabbix request to the journal. Never logs the API token; turn off after troubleshooting.</description>
+    </key>
+
+  </schema>
+</schemalist>

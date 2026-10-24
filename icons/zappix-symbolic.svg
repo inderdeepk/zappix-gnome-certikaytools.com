@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- The panel mark (src/ui/widgets/panelGauge.js): a ring gauge with the
+       Zappix pulse at its centre. -->
+  <g fill="none" stroke="#2e3436" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="8" cy="8" r="6.7" stroke-width="1.9" stroke-opacity="0.35"/>
+    <path d="M8 1.3A6.7 6.7 0 1 1 2.58 11.94" stroke-width="1.9"/>
+    <path d="M4.3 8.4h1.92l1.19-2.72 1.33 4.64 1.04-1.92h1.92" stroke-width="1.3"/>
+  </g>
+</svg>

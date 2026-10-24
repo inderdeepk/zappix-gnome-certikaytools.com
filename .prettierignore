@@ -1,0 +1,9 @@
+debug/
+node_modules/
+schemas/
+icons/
+po/
+Documentation/
+deploy/
+*.zip
+package-lock.json
