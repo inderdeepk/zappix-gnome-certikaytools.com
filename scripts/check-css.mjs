@@ -107,5 +107,17 @@ for (const file of FILES) {
     }
 }
 
+// St reads a negative length as unsigned: `margin-top: -3px` made one label ask
+// for 2^32 px and pushed every tile row below it out of the popup.
+const stText = readFileSync('stylesheet.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, (comment) =>
+    comment.replace(/[^\n]/g, ' '),
+);
+stText.split('\n').forEach((line, index) => {
+    if (/:\s*[^;]*(^|[\s(,])-\d/.test(line)) {
+        console.error(`[FAIL] stylesheet.css:${index + 1} negative length: ${line.trim()}`);
+        failed = true;
+    }
+});
+
 if (failed) process.exit(1);
-console.log(`[OK] CSS delimiters balanced (${FILES.join(', ')})`);
+console.log(`[OK] CSS delimiters balanced (${FILES.join(', ')}); no negative St lengths`);

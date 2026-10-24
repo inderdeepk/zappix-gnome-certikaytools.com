@@ -7,6 +7,8 @@ import { assertDeepEqual, assertEqual, runTests } from './testUtils.js';
 import {
     formatBitRate,
     formatBitRateCompact,
+    formatBitRatePair,
+    formatByteRatio,
     formatBytes,
     formatBytesCompact,
     formatClockTime,
@@ -72,6 +74,28 @@ await runTests([
         },
     ],
     [
+        'formatByteRatio shares one unit between used and total',
+        () => {
+            assertEqual(formatByteRatio(5 * 1024 ** 3, 7.5 * 1024 ** 3), '5/7.5 GB');
+            assertEqual(formatByteRatio(512, 1024), '0.5/1 KB');
+            assertEqual(formatByteRatio(0, 8 * 1024 ** 3), '0/8 GB');
+        },
+    ],
+    [
+        'formatByteRatio never prints a rounded-away usage as zero',
+        () => {
+            assertEqual(formatByteRatio(0.5 * 1024 ** 2, 1024 ** 4), '<0.1/1 TB');
+        },
+    ],
+    [
+        'formatByteRatio rejects a missing or non-positive total',
+        () => {
+            assertEqual(formatByteRatio(1024, 0), '');
+            assertEqual(formatByteRatio(1024, null), '');
+            assertEqual(formatByteRatio(null, 1024), '');
+        },
+    ],
+    [
         'formatBitRate uses SI units, matching the Zabbix frontend',
         () => {
             assertEqual(formatBitRate(18_200_000), '18.2 Mb/s');
@@ -87,6 +111,21 @@ await runTests([
             assertEqual(formatBitRateCompact(640_000), '640k');
             assertEqual(formatBitRateCompact(2_500_000_000), '2.5G');
             assertEqual(formatBitRateCompact(120), '120');
+        },
+    ],
+    [
+        'formatBitRatePair shares one unit across both directions',
+        () => {
+            assertEqual(formatBitRatePair(2_100_000, 400_000), '↓ 2.1 · ↑ 0.4 Mb/s');
+            assertEqual(formatBitRatePair(1_000, 400), '↓ 1 · ↑ 0.4 kb/s');
+        },
+    ],
+    [
+        'formatBitRatePair keeps a single direction readable',
+        () => {
+            assertEqual(formatBitRatePair(400_000, null), '↓ 400 kb/s');
+            assertEqual(formatBitRatePair(null, 400_000), '↑ 400 kb/s');
+            assertEqual(formatBitRatePair(null, null), '');
         },
     ],
     [

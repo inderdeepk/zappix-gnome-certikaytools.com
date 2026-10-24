@@ -302,12 +302,13 @@
     font-feature-settings: "tnum";
 }
 
-/* The absolute figure behind a percentage, e.g. "5.0 GB of 7.8 GB". Sits
-   tight under the number so the pair reads as one value. */
+/* The absolute context behind the headline, e.g. "5/7.5 GB" or
+   "↓ 2.1 · ↑ 0.4 Mb/s".
+   No negative margin: St reads it as unsigned and asks for a 2^32 px label. */
 .zappix-tile-detail {
-    font-size: 0.76em;
+    font-size: 0.72em;
     color: rgba(255, 255, 255, 0.55);
-    margin-top: -3px;
+    font-feature-settings: "tnum";
 }
 
 .zappix-sparkline {

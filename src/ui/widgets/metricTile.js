@@ -86,9 +86,9 @@ export const MetricTile = GObject.registerClass(
             });
             this.add_child(this._value);
 
-            // "5.0 GB of 7.8 GB" — the absolute figure behind a percentage.
-            // Hidden for metrics that have no meaningful total (network,
-            // containers) so the tile keeps its compact height.
+            // "5/7.5 GB" or "↓ 2.1 · ↑ 0.4 Mb/s" — the absolute context behind
+            // the headline. Hidden for metrics whose supporting items the host
+            // does not publish, so the tile keeps its compact height.
             this._detail = new St.Label({
                 style_class: 'zappix-tile-detail',
                 text: '',

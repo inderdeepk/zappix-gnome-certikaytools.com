@@ -39,6 +39,29 @@ export const VALUE_KIND = Object.freeze({
 });
 
 /**
+ * Recipes for the small secondary line under a tile value.
+ *
+ * A detail spec lives beside the metric in this catalog and names the extra
+ * items it needs. `normalize.js` resolves those items into text; a host that
+ * does not publish them simply renders without the line instead of with a
+ * placeholder.
+ */
+export const DETAIL_KIND = Object.freeze({
+    /** Percentage + total bytes → `5/7.5 GB` (+ disk mount when available). */
+    USAGE: 'usage',
+    /** CPU: core count plus the 1-minute load → `8 cores · load 0.42`. */
+    CPU: 'cpu',
+    /** Core count alone, for the Load tile → `8 cores`. */
+    CORES: 'cores',
+    /** Network: inbound/outbound split → `↓ 2.1 · ↑ 0.4 Mb/s`. */
+    DIRECTIONS: 'directions',
+    /** Stopped containers, beside the running headline → `2 stopped`. */
+    STOPPED: 'stopped',
+    /** Total count behind a running count → `312 total`. */
+    TOTAL: 'total',
+});
+
+/**
  * Aggregate strategies when several items match one metric (one per network
  * interface, one per filesystem, one per CPU mode…).
  */
@@ -58,6 +81,9 @@ export const AGGREGATE = Object.freeze({
  * parameter; `candidates[].preferredKey` breaks ties when several items match
  * the same search term (Zabbix returns them alphabetically, which is not a
  * useful priority).
+ *
+ * `detail` describes the smaller second line under the tile value. Its `search`
+ * terms are added to `item.get` even when no headline candidate needs them.
  */
 export const METRICS = Object.freeze([
     Object.freeze({
@@ -101,6 +127,19 @@ export const METRICS = Object.freeze([
                 fallbackKind: VALUE_KIND.LOAD,
             }),
         ]),
+        // A percentage without context is hard to read: 42 % of what? The
+        // core count says how many CPUs are being averaged, and the 1-minute
+        // load is the absolute figure an operator would ask for next.
+        detail: Object.freeze({
+            kind: DETAIL_KIND.CPU,
+            search: Object.freeze([
+                'system.cpu.num',
+                'system.cpu.load[all,avg1]',
+                'system.cpu.load[percpu,avg1]',
+            ]),
+            coreKeys: Object.freeze(['system.cpu.num']),
+            loadKeys: Object.freeze(['system.cpu.load[all,avg1]', 'system.cpu.load[percpu,avg1]']),
+        }),
     }),
     Object.freeze({
         id: 'memory',
@@ -134,10 +173,16 @@ export const METRICS = Object.freeze([
                 transform: TRANSFORM.AUTO_PERCENT,
             }),
         ]),
-        // "63 %" answers *how bad*, not *how much*. The tile's second line shows
-        // "5.0 GB of 7.8 GB", derived from the total the Linux template reports.
+        // "63 %" answers *how bad*, not *how much*. The tile's second line
+        // reads `5/7.5 GB`, derived from the total the Linux template reports.
+        // `available` + `pavailable` are the fallback for a template that has
+        // the percentage but not the total item: total = available / pavailable.
         detail: Object.freeze({
+            kind: DETAIL_KIND.USAGE,
+            search: Object.freeze(['vm.memory.size[total]', 'vm.memory.size[available]']),
             totalKeys: Object.freeze(['vm.memory.size[total]']),
+            availableKeys: Object.freeze(['vm.memory.size[available]']),
+            availablePercentKeys: Object.freeze(['vm.memory.size[pavailable]']),
         }),
     }),
     Object.freeze({
@@ -209,11 +254,21 @@ export const METRICS = Object.freeze([
         ]),
         // The total belongs to whichever mount supplied the percentage, so the
         // key is derived from the matched item: `vfs.fs.size[/hostfs,pused]`
-        // asks for `vfs.fs.size[/hostfs,total]`. Missing → the tile simply has
-        // no second line, which is why the manually created /hostfs item still
-        // works without a sibling.
+        // asks for `vfs.fs.size[/hostfs,total]`. The mount is shown beside the
+        // figures because "Disk" alone does not say which filesystem is meant.
+        // A hand-made /hostfs item with no sibling still gets the mount line.
         detail: Object.freeze({
-            totalKeyFromSource: Object.freeze({ from: ',pused]', to: ',total]' }),
+            kind: DETAIL_KIND.USAGE,
+            // The catch-all candidates already search these prefixes; listing
+            // them here keeps the total items coming if those candidates ever
+            // change.
+            search: Object.freeze(['vfs.fs.size[', 'vfs.fs.dependent.size[']),
+            totalKeyFromSource: Object.freeze([
+                Object.freeze({ from: ',pused]', to: ',total]' }),
+                // Free-percentage fallbacks name the same mount.
+                Object.freeze({ from: ',pfree]', to: ',total]' }),
+            ]),
+            showMount: true,
         }),
     }),
     Object.freeze({
@@ -239,13 +294,21 @@ export const METRICS = Object.freeze([
                 search: 'net.if.in[',
                 excludeKeys: Object.freeze(['"lo"', '[lo]', 'errors', 'dropped']),
                 transform: TRANSFORM.IDENTITY,
+                direction: 'in',
             }),
             Object.freeze({
                 search: 'net.if.out[',
                 excludeKeys: Object.freeze(['"lo"', '[lo]', 'errors', 'dropped']),
                 transform: TRANSFORM.IDENTITY,
+                direction: 'out',
             }),
         ]),
+        // The headline sums both directions; the second line puts them back
+        // apart, because "47 kb/s" does not say whether the server is serving
+        // or downloading.
+        detail: Object.freeze({
+            kind: DETAIL_KIND.DIRECTIONS,
+        }),
     }),
     Object.freeze({
         id: 'containers',
@@ -259,7 +322,7 @@ export const METRICS = Object.freeze([
         // Only a host with the "Docker by Zabbix agent 2" template answers
         // this. It is on by default because a containerised deployment has no
         // better one-glance signal: "running" dropping is the incident, and
-        // the stopped count comes along in the tooltip via the item name.
+        // the stopped count beside it says how far it dropped.
         candidates: Object.freeze([
             Object.freeze({
                 search: 'docker.containers.running',
@@ -267,6 +330,11 @@ export const METRICS = Object.freeze([
                 transform: TRANSFORM.IDENTITY,
             }),
         ]),
+        detail: Object.freeze({
+            kind: DETAIL_KIND.STOPPED,
+            search: Object.freeze(['docker.containers.stopped']),
+            stoppedKeys: Object.freeze(['docker.containers.stopped']),
+        }),
     }),
     Object.freeze({
         id: 'swap',
@@ -294,6 +362,11 @@ export const METRICS = Object.freeze([
                 transform: TRANSFORM.AUTO_PERCENT,
             }),
         ]),
+        detail: Object.freeze({
+            kind: DETAIL_KIND.USAGE,
+            search: Object.freeze(['system.swap.size[,total]']),
+            totalKeys: Object.freeze(['system.swap.size[,total]']),
+        }),
     }),
     Object.freeze({
         id: 'load',
@@ -318,6 +391,13 @@ export const METRICS = Object.freeze([
                 transform: TRANSFORM.IDENTITY,
             }),
         ]),
+        // Load is only meaningful against the number of CPUs: 4.0 is idle on
+        // a 16-core box and overloaded on a dual-core one.
+        detail: Object.freeze({
+            kind: DETAIL_KIND.CORES,
+            search: Object.freeze(['system.cpu.num']),
+            coreKeys: Object.freeze(['system.cpu.num']),
+        }),
     }),
     Object.freeze({
         id: 'uptime',
@@ -349,18 +429,28 @@ export const METRICS = Object.freeze([
         sparkline: true,
         defaultEnabled: false,
         candidates: Object.freeze([
+            // "Running" is the headline because that is what the unit label
+            // promises. The bare key is the total process count and becomes
+            // the second line once the running item has answered.
+            Object.freeze({
+                search: 'proc.num[,,run]',
+                preferredKey: 'proc.num[,,run]',
+                transform: TRANSFORM.IDENTITY,
+            }),
             Object.freeze({
                 search: 'proc.num',
                 preferredKey: 'proc.num',
                 excludeKeys: Object.freeze(['[']),
                 transform: TRANSFORM.IDENTITY,
             }),
-            Object.freeze({
-                search: 'proc.num[,,run]',
-                preferredKey: 'proc.num[,,run]',
-                transform: TRANSFORM.IDENTITY,
-            }),
         ]),
+        // "250 running" is only half the answer; the total says whether that
+        // is a quiet host or a process table that is mostly sleeping.
+        detail: Object.freeze({
+            kind: DETAIL_KIND.TOTAL,
+            search: Object.freeze(['proc.num', 'proc.num[]']),
+            totalKeys: Object.freeze(['proc.num', 'proc.num[]']),
+        }),
     }),
 ]);
 
@@ -403,7 +493,10 @@ export function resolveEnabledMetrics(ids) {
  * Every `item.get` search term needed to resolve the requested metrics.
  *
  * Deduplicated because two metrics can share a candidate prefix (cpu's
- * `system.cpu.util` also matches `system.cpu.utilization`).
+ * `system.cpu.util` also matches `system.cpu.utilization`). Detail items are
+ * included explicitly: `vm.memory.size[total]` shares no prefix with any
+ * headline candidate, so without it the memory tile would have a percentage
+ * and no absolute figure.
  *
  * @param {object[]} metrics
  * @returns {string[]}
@@ -413,6 +506,9 @@ export function collectSearchTerms(metrics) {
     for (const metric of metrics) {
         for (const candidate of metric.candidates) {
             terms.add(candidate.search);
+        }
+        for (const term of metric.detail?.search ?? []) {
+            terms.add(term);
         }
     }
     return [...terms];
