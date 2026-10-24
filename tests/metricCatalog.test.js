@@ -10,6 +10,7 @@ import {
     AGGREGATE,
     collectSearchTerms,
     DEFAULT_METRIC_IDS,
+    DETAIL_KIND,
     getMetric,
     METRIC_IDS,
     METRICS,
@@ -168,6 +169,31 @@ await runTests([
         () => {
             const terms = collectSearchTerms([getMetric('cpu'), getMetric('cpu')]);
             assertEqual(new Set(terms).size, terms.length);
+        },
+    ],
+    [
+        'every detail recipe declares a known kind',
+        () => {
+            const kinds = new Set(Object.values(DETAIL_KIND));
+            for (const metric of METRICS) {
+                if (!metric.detail) continue;
+                assert(
+                    kinds.has(metric.detail.kind),
+                    `${metric.id} has detail kind ${metric.detail.kind}`,
+                );
+            }
+        },
+    ],
+    [
+        'collectSearchTerms includes the supporting detail items',
+        () => {
+            // `vm.memory.size[total]` shares no prefix with a headline
+            // candidate, so it only arrives if the detail spec contributes it.
+            const terms = collectSearchTerms(METRICS);
+            assert(terms.includes('vm.memory.size[total]'), 'memory total requested');
+            assert(terms.includes('system.cpu.num'), 'cpu core count requested');
+            assert(terms.includes('docker.containers.stopped'), 'stopped containers requested');
+            assert(terms.includes('proc.num'), 'process total requested');
         },
     ],
 ]);

@@ -8,10 +8,13 @@ All notable changes to Zappix are recorded here. The format follows
 
 ### Added
 
-- Tiles for percentage metrics now carry the absolute figure underneath:
-  Memory reads `63 %` with `5 GB of 8 GB`, Disk derives the total from the same
-  mount (`vfs.fs.size[/hostfs,pused]` → `vfs.fs.size[/hostfs,total]`). A host
-  that reports no total simply has no second line.
+- **Tiles carry a fuller second line.** Memory and Swap read `5/7.5 GB`,
+  Disk adds the mount (`42.9/64 GB · /hostfs`, derived from
+  `vfs.fs.size[/hostfs,pused]` → `vfs.fs.size[/hostfs,total]`), CPU shows
+  `8 cores · load 0.42`, Network splits inbound and outbound
+  (`↓ 2.1 · ↑ 0.4 Mb/s`), Containers shows the stopped count, and Processes
+  shows the total. A host that does not publish the supporting item simply has
+  no second line.
 
 - Panel indicator with a hover-opened dropdown (click-to-pin supported).
 - Per-server cards with CPU, memory, disk and network tiles, sparklines and
@@ -81,6 +84,15 @@ All notable changes to Zappix are recorded here. The format follows
 
 ### Fixed
 
+- **The detail line never appeared for memory or swap.** `item.get` only asked
+  for the catalog's headline candidates, so `vm.memory.size[total]` and
+  `system.swap.size[,total]` were never in the response. Detail items are now
+  part of the search terms, and a missing memory total is reconstructed from
+  `available` / `pavailable`.
+- **The Processes tile preferred the total count over the running count.** The
+  bare `proc.num` item (total) came first in the candidate list even though the
+  tile's unit label says *running*. `proc.num[,,run]` is now the headline and
+  `proc.num` is the second line.
 - **On a HiDPI screen a single host scrolled and its last tile was cut off.**
   The list-height cap (560 px) and chrome allowance were logical pixels applied
   to stage pixels, which on X11 at 2× are physical — so the cap was really
