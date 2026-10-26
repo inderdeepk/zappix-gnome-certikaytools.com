@@ -63,8 +63,8 @@ export const ServerCard = GObject.registerClass(
                 ...stParams,
             });
 
-            this._onRefresh = onRefresh ?? (() => {});
-            this._onOpenFrontend = onOpenFrontend ?? (() => {});
+            this._onRefresh = onRefresh ?? (() => { });
+            this._onOpenFrontend = onOpenFrontend ?? (() => { });
             this._maxListHeight = maxListHeight ?? 560;
 
             this._hostSections = new Map();
@@ -227,7 +227,8 @@ export const ServerCard = GObject.registerClass(
                 this._subtitle.remove_style_class_name('zappix-text-crit');
             }
 
-            const busy = snapshot.status === SERVER_STATUS.LOADING;
+            const busy =
+                snapshot.status === SERVER_STATUS.LOADING && snapshot.errorKind !== 'credentials';
             this._refreshButton.reactive = !busy;
             this._refreshButton.opacity = busy ? 120 : 255;
         }
@@ -374,7 +375,10 @@ export const ServerCard = GObject.registerClass(
          */
         _renderFooter(snapshot) {
             if (snapshot.status === SERVER_STATUS.LOADING && !snapshot.fetchedAt) {
-                this._updatedLabel.text = _('Connecting…');
+                // The header subtitle already names the reason; the footer says
+                // that it is being worked on rather than repeating it.
+                this._updatedLabel.text =
+                    snapshot.errorKind === 'credentials' ? _('Retrying…') : _('Connecting…');
                 return;
             }
 

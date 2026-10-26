@@ -37,6 +37,7 @@ import { buildFrontendUrl } from './src/api/zabbixEndpoints.js';
 const RECONFIGURE_KEYS = [
     'servers',
     'active-server-id',
+    'credentials-revision',
     'insecure-tls',
     'timeout-seconds',
     'poll-interval-seconds',

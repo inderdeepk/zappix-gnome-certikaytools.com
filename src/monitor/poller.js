@@ -18,6 +18,7 @@ import GLib from 'gi://GLib';
 import { ZabbixClient } from '../api/zabbixClient.js';
 import { POLL_MODE, pollServer } from './serverPoller.js';
 import {
+    credentialWaitSnapshot,
     failureSnapshot,
     initialSnapshot,
     SERVER_STATUS,
@@ -25,7 +26,25 @@ import {
 } from './snapshotStore.js';
 import { nextDelaySeconds } from './backoff.js';
 import { enabledServers } from '../shared/serverStore.js';
-import { debug, error, info, warn } from '../shared/log.js';
+import { debug, error, info } from '../shared/log.js';
+
+/**
+ * Do not read the credential twice in one refresh burst.
+ *
+ * Startup reconciles (reads credentials) and then polls; without this guard a
+ * server whose keyring lookup just failed would pay the 15 s keyring timeout a
+ * second time before the poller's own retry loop took over.
+ */
+const CREDENTIAL_RECHECK_MS = 5000;
+
+/**
+ * Retry pacing while a server has no usable credential. Deliberately faster
+ * than the poll interval: a locked keyring usually unlocks within seconds of
+ * login, and the panel should recover on its own rather than sit on
+ * "Not configured" until the next shell restart.
+ */
+const CREDENTIAL_RETRY_BASE_SECONDS = 15;
+const CREDENTIAL_RETRY_CEILING_SECONDS = 120;
 
 /** Guard: one in-flight poll per server, and one pending timer per server. */
 export class MonitorService {
@@ -50,6 +69,10 @@ export class MonitorService {
         this._inFlight = new Set();
         /** @type {Map<string, number>} */
         this._failures = new Map();
+        /** @type {Map<string, Promise<void>>} in-flight credential/client builds */
+        this._ensurePromises = new Map();
+        /** @type {Map<string, number>} last credential read, in ms since epoch */
+        this._credentialCheckedAt = new Map();
 
         this._destroyed = false;
         /** Full polling is enabled while a human can see the sparklines. */
@@ -116,6 +139,8 @@ export class MonitorService {
             this._clients.delete(serverId);
             this._snapshots.delete(serverId);
             this._failures.delete(serverId);
+            this._ensurePromises.delete(serverId);
+            this._credentialCheckedAt.delete(serverId);
         }
 
         // Seed snapshots so the UI can render "loading" immediately rather than
@@ -140,14 +165,47 @@ export class MonitorService {
     }
 
     /**
-     * Create or update the client for one server.
+     * Create or update the client for one server, de-duplicating concurrent
+     * calls.
+     *
+     * `reconfigure()` and an in-flight poll can ask for the same server at the
+     * same time; without this the credential would be read twice and two
+     * clients could race into `_clients`.
      *
      * @param {object} server
      * @returns {Promise<void>}
      */
-    async _ensureClient(server) {
+    _ensureClient(server) {
+        const pending = this._ensurePromises.get(server.id);
+        if (pending) return pending;
+
+        let promise;
+        promise = this._buildClient(server).finally(() => {
+            if (this._ensurePromises.get(server.id) === promise) {
+                this._ensurePromises.delete(server.id);
+            }
+        });
+        this._ensurePromises.set(server.id, promise);
+        return promise;
+    }
+
+    /**
+     * Read credentials and create or update the client for one server.
+     *
+     * A credential read that fails because the keyring is unavailable is *not*
+     * treated as "no token": the server keeps its existing client (if any), or
+     * is left in the connecting state so the next poll retries. Only a lookup
+     * that positively reports "nothing stored" produces UNCONFIGURED.
+     *
+     * @param {object} server
+     * @returns {Promise<void>}
+     */
+    async _buildClient(server) {
+        this._credentialCheckedAt.set(server.id, Date.now());
+
         let secret = '';
         let accessSecret = '';
+        let unavailable = null;
         try {
             secret = await this._secrets.lookup(server.secretRef);
             // Only looked up when the server actually uses Cloudflare Access,
@@ -156,15 +214,34 @@ export class MonitorService {
                 accessSecret = await this._secrets.lookup(server.accessSecretRef);
             }
         } catch (lookupError) {
-            warn(`cannot read credential for ${server.id}`, lookupError?.message);
+            unavailable = lookupError;
         }
 
         const existing = this._clients.get(server.id);
 
         if (existing) {
+            if (unavailable) {
+                // Hold on to the credential the client already authenticated
+                // with; wiping it over a transient keyring failure would turn
+                // a working server into an authentication error.
+                debug(`keeping cached credential for ${server.id}: ${unavailable.message}`);
+                return;
+            }
             existing.secret = secret;
             existing.accessSecret = accessSecret;
             existing.setAllowUntrustedTls(server.allowUntrustedTls || this._settings.insecureTls);
+            return;
+        }
+
+        if (unavailable) {
+            this._snapshots.set(
+                server.id,
+                credentialWaitSnapshot(
+                    this._snapshots.get(server.id) ?? initialSnapshot(server),
+                    'Waiting for the login keyring…',
+                ),
+            );
+            debug(`credential unavailable for ${server.id}: ${unavailable.message}`);
             return;
         }
 
@@ -246,7 +323,7 @@ export class MonitorService {
         const next = Boolean(full);
         if (next === this._wantFullDepth) return;
         this._wantFullDepth = next;
-        if (next) this.refresh({ mode: POLL_MODE.FULL }).catch(() => {});
+        if (next) this.refresh({ mode: POLL_MODE.FULL }).catch(() => { });
     }
 
     /**
@@ -262,6 +339,8 @@ export class MonitorService {
         this._inFlight.clear();
         this._snapshots.clear();
         this._failures.clear();
+        this._ensurePromises.clear();
+        this._credentialCheckedAt.clear();
         debug('monitor stopped');
     }
 
@@ -277,13 +356,39 @@ export class MonitorService {
      * @returns {Promise<void>}
      */
     async _pollOnce(server, mode, { reschedule = false } = {}) {
-        const client = this._clients.get(server.id);
-        if (!client) return;
         if (this._inFlight.has(server.id)) return;
 
         this._inFlight.add(server.id);
 
+        // Set when this attempt could not build a client; the `finally` block
+        // then uses the credential retry cadence instead of the poll interval.
+        let credentialRetryDelay = null;
+
         try {
+            let client = this._clients.get(server.id);
+
+            // A server whose credential could not be read at startup (locked
+            // keyring, login race, timed-out prompt) has no client at all. The
+            // old code returned here forever, so "Not configured" survived
+            // until the shell restarted. Re-running the lookup on every poll is
+            // what makes the panel recover on its own.
+            if (!client && !this._credentialRecentlyChecked(server.id)) {
+                await this._ensureClient(server);
+                client = this._clients.get(server.id);
+            }
+
+            if (!client) {
+                this._failures.set(server.id, (this._failures.get(server.id) ?? 0) + 1);
+                credentialRetryDelay = nextDelaySeconds({
+                    baseSeconds: CREDENTIAL_RETRY_BASE_SECONDS,
+                    consecutiveFailures: this._failures.get(server.id) ?? 1,
+                    ceilingSeconds: CREDENTIAL_RETRY_CEILING_SECONDS,
+                    jitterRatio: 0,
+                });
+                this._onChange('credential-wait');
+                return;
+            }
+
             const payload = await pollServer({
                 client,
                 server,
@@ -324,13 +429,27 @@ export class MonitorService {
         } finally {
             this._inFlight.delete(server.id);
             if (reschedule && !this._destroyed) {
-                const delay = nextDelaySeconds({
-                    baseSeconds: this._settings.pollIntervalSeconds,
-                    consecutiveFailures: this._failures.get(server.id) ?? 0,
-                });
+                const delay =
+                    credentialRetryDelay ??
+                    nextDelaySeconds({
+                        baseSeconds: this._settings.pollIntervalSeconds,
+                        consecutiveFailures: this._failures.get(server.id) ?? 0,
+                    });
                 this._schedule(server.id, delay);
             }
         }
+    }
+
+    /**
+     * Has the credential been read so recently that another attempt would just
+     * repeat the same failure? Guards the startup reconcile + first poll burst.
+     *
+     * @param {string} serverId
+     * @returns {boolean}
+     */
+    _credentialRecentlyChecked(serverId) {
+        const checkedAt = this._credentialCheckedAt.get(serverId);
+        return Boolean(checkedAt) && Date.now() - checkedAt < CREDENTIAL_RECHECK_MS;
     }
 
     /**
@@ -352,7 +471,7 @@ export class MonitorService {
                 );
                 if (server && !this._destroyed) {
                     const mode = this._wantFullDepth ? POLL_MODE.FULL : POLL_MODE.PANEL;
-                    this._pollOnce(server, mode, { reschedule: true }).catch(() => {});
+                    this._pollOnce(server, mode, { reschedule: true }).catch(() => { });
                 }
                 return GLib.SOURCE_REMOVE;
             },

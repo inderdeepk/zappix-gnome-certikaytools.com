@@ -5,6 +5,7 @@
 // looked like immediately before it went unreachable.
 import { assertEqual, assertDeepEqual, runTests } from './testUtils.js';
 import {
+    credentialWaitSnapshot,
     describeServer,
     failureSnapshot,
     initialSnapshot,
@@ -417,6 +418,38 @@ await runTests([
                 fetchedAt: 1,
             });
             assertEqual(describeServer(failed), 'Connection refused');
+        },
+    ],
+    [
+        'describeServer says why a server is waiting for its credential',
+        () => {
+            const waiting = credentialWaitSnapshot(
+                initialSnapshot(SERVER),
+                'Waiting for the login keyring…',
+            );
+            assertEqual(waiting.status, SERVER_STATUS.LOADING);
+            assertEqual(waiting.errorKind, 'credentials');
+            assertEqual(describeServer(waiting), 'Waiting for the login keyring…');
+        },
+    ],
+    [
+        'credentialWaitSnapshot keeps the last good data',
+        () => {
+            const previous = successSnapshot({
+                server: SERVER,
+                hosts: [host({ value: 31 })],
+                fetchedAt: 1000,
+            });
+            const waiting = credentialWaitSnapshot(previous, 'Waiting for the login keyring…');
+            assertEqual(waiting.status, SERVER_STATUS.LOADING);
+            assertEqual(waiting.hostCount, 1);
+            assertEqual(waiting.fetchedAt, 1000);
+        },
+    ],
+    [
+        'describeServer still says Connecting for a first-time load',
+        () => {
+            assertEqual(describeServer(initialSnapshot(SERVER)), 'Connecting…');
         },
     ],
     [

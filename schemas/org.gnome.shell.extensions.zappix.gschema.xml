@@ -24,6 +24,12 @@
       <description>Id of the server whose card is expanded in the dropdown. An empty value, or an id that no longer exists, falls back to the first enabled server.</description>
     </key>
 
+    <key name="credentials-revision" type="u">
+      <default>0</default>
+      <summary>Credentials Revision</summary>
+      <description>Incremented by the preferences window whenever a stored credential changes, so the running extension rereads it without a restart. Internal bookkeeping; there is no user-facing control.</description>
+    </key>
+
     <!-- ===================================================================
          Dropdown behaviour
          =================================================================== -->

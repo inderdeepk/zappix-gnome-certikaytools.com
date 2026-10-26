@@ -172,8 +172,8 @@ export class ServersPage {
             subtitle:
                 backend === 'file'
                     ? _(
-                          'A private file (mode 0600) is used because the login keyring is unavailable.',
-                      )
+                        'A private file (mode 0600) is used because the login keyring is unavailable.',
+                    )
                     : _('Tokens are stored in the login keyring via libsecret.'),
         });
         group.add(row);
@@ -188,7 +188,7 @@ export class ServersPage {
                     'A private file (mode 0600) is used because the login keyring is unavailable.',
                 );
             })
-            .catch(() => {});
+            .catch(() => { });
 
         return group;
     }
@@ -238,6 +238,8 @@ export class ServersPage {
      * @returns {Promise<{ok: boolean, error: string}>}
      */
     async _save({ server, secret, accessSecret = '' }) {
+        let credentialsChanged = false;
+
         if (secret) {
             const outcome = await this._secrets.store(server.secretRef, secret);
             if (!outcome.ok) {
@@ -246,6 +248,7 @@ export class ServersPage {
                     error: `${_('Could not store the API token.')} ${outcome.error ?? ''}`.trim(),
                 };
             }
+            credentialsChanged = true;
         }
 
         // The Access secret follows the client id: set together, cleared
@@ -261,11 +264,17 @@ export class ServersPage {
                         `${outcome.error ?? ''}`.trim(),
                 };
             }
+            credentialsChanged = true;
         } else if (!server.accessClientId) {
             await this._secrets.remove(server.accessSecretRef);
         }
 
         this._settings.servers = upsertServer(this._settings.servers, server);
+
+        // A token-only edit leaves the servers JSON untouched; this is what
+        // makes the running extension reread the credential immediately
+        // instead of keeping the empty lookup it got at startup.
+        if (credentialsChanged) this._settings.bumpCredentialsRevision();
 
         // The first server added becomes the active one; otherwise the dropdown
         // would open on an empty card.
@@ -326,6 +335,7 @@ export class ServersPage {
         await this._secrets.remove(server.accessSecretRef);
         const remaining = removeServer(this._settings.servers, server.id);
         this._settings.servers = remaining;
+        this._settings.bumpCredentialsRevision();
 
         if (this._settings.activeServerId === server.id) {
             this._settings.activeServerId = remaining[0]?.id ?? '';
@@ -345,7 +355,7 @@ export class ServersPage {
             buttons: [_('Close')],
             modal: true,
         });
-        dialog.choose(this._window, null, () => {});
+        dialog.choose(this._window, null, () => { });
     }
 }
 

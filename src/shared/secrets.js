@@ -51,8 +51,39 @@ const SECRET_SERVICE_PROBE_MS = 2000;
  */
 const KEYRING_CALL_TIMEOUT_MS = 15000;
 
-/** Cached "is there a Secret Service on this session bus?" answer. */
-let secretServiceAvailable = null;
+/**
+ * How long a failed Secret Service probe is trusted.
+ *
+ * The answer used to be cached for the life of the process, which turned a
+ * login-time race — the keyring is routinely not answering for the first
+ * seconds of a session — into "no keyring" until the shell restarted, and on a
+ * keyring install (empty file fallback) into a permanent "Not configured"
+ * card. A negative answer now expires so the next poll can find the service.
+ */
+const SECRET_SERVICE_RETRY_MS = 30_000;
+
+/** Cached probe result, and when it was taken. */
+let secretServiceProbe = { available: null, checkedAt: 0 };
+
+/**
+ * Thrown when a credential could not be read *or* ruled out.
+ *
+ * "The keyring is locked / still starting / not answering" and "no token is
+ * stored" must not look the same to the caller: the first deserves a retry and
+ * an honest status line, the second is a configuration task. `lookup()`
+ * resolves with `''` only for the latter.
+ */
+export class CredentialUnavailableError extends Error {
+    /**
+     * @param {string} message
+     * @param {unknown} [cause]
+     */
+    constructor(message, cause) {
+        super(message);
+        this.name = 'CredentialUnavailableError';
+        this.cause = cause;
+    }
+}
 
 /**
  * Absolute path of the fallback credential file.
@@ -100,11 +131,14 @@ export class SecretStore {
     /**
      * @param {object} [options]
      * @param {string} [options.dataHome] override for tests
+     * @param {object} [options.secretModule] injected `gi://Secret` stand-in for tests
      */
-    constructor({ dataHome } = {}) {
+    constructor({ dataHome, secretModule = null } = {}) {
         this._dataHome = dataHome ?? null;
-        this._secretModule = null;
+        this._secretModule = secretModule;
         this._secretPromise = null;
+        /** Set when `gi://Secret` itself is missing; retrying the import is pointless. */
+        this._moduleMissing = false;
         /** Set once a lookup has proven which backend is in use. */
         this._backend = 'unknown';
     }
@@ -128,11 +162,23 @@ export class SecretStore {
      * @returns {Promise<object|null>}
      */
     async _secret() {
+        if (this._secretModule) return this._secretModule;
+        if (this._moduleMissing) return null;
+
         // Cache the promise, not a boolean: the import and the D-Bus probe are
         // asynchronous, and a second caller arriving mid-flight used to see
         // "resolved" with a null module and silently take the file path.
+        //
+        // The promise is cleared once it settles: a failed probe or import is
+        // retried on a later poll (the 30 s negative cache in
+        // `hasSecretService()` keeps that cheap) instead of downgrading the
+        // whole session to the empty file fallback.
         if (!this._secretPromise) this._secretPromise = this._loadSecret();
-        return this._secretPromise;
+        try {
+            return await this._secretPromise;
+        } finally {
+            this._secretPromise = null;
+        }
     }
 
     /**
@@ -140,8 +186,7 @@ export class SecretStore {
      */
     async _loadSecret() {
         if (!(await hasSecretService())) {
-            warn('no Secret Service on the session bus; using the private file store');
-            this._secretModule = null;
+            debug('Secret Service not answering yet; using the private file store');
             return null;
         }
 
@@ -149,8 +194,11 @@ export class SecretStore {
             const imported = await import('gi://Secret');
             this._secretModule = imported?.default ?? imported ?? null;
         } catch (error) {
+            // `gir1.2-secret-1` is not installed: the file store is the only
+            // backend this machine will ever have, so stop retrying.
             warn('libsecret unavailable; falling back to a private file store', error?.message);
             this._secretModule = null;
+            this._moduleMissing = true;
         }
 
         return this._secretModule;
@@ -161,6 +209,9 @@ export class SecretStore {
      *
      * @param {string} ref secret reference (`zappix:<serverId>`)
      * @returns {Promise<string>} empty string when nothing is stored
+     * @throws {CredentialUnavailableError} when the keyring could not be asked
+     *   (locked, still starting, timed out) and the file has no copy either —
+     *   the caller must retry rather than present the server as unconfigured
      */
     async lookup(ref) {
         if (!ref) return '';
@@ -183,7 +234,20 @@ export class SecretStore {
                 if (fromFile) this._backend = 'file';
                 return fromFile;
             } catch (error) {
+                // The keyring exists but did not answer (locked collection, an
+                // unlock prompt that timed out, a wedged daemon). The file may
+                // still hold a working credential; when it does not, this is
+                // *not* "nothing configured" and the caller must retry.
                 warn('keyring lookup failed; trying the file store', error?.message);
+                const fromFile = this._readFile()[ref] ?? '';
+                if (fromFile) {
+                    this._backend = 'file';
+                    return fromFile;
+                }
+                throw new CredentialUnavailableError(
+                    'The login keyring is locked or not answering yet.',
+                    error,
+                );
             }
         }
 
@@ -316,14 +380,22 @@ function deleteKey(record, key) {
  * Is there a Secret Service this session can actually talk to?
  *
  * `StartServiceByName` is the same activation libsecret performs, so probing it
- * first turns an indefinite block into a two-second answer. Cached: a session
- * does not grow a keyring mid-run, and re-probing on every save would be noise.
+ * first turns an indefinite block into a two-second answer. A positive answer
+ * is cached for the session; a negative one expires after 30 s, because the
+ * keyring is often a few seconds behind the shell at login.
  *
  * @returns {Promise<boolean>}
  */
 async function hasSecretService() {
-    if (secretServiceAvailable !== null) return secretServiceAvailable;
+    if (secretServiceProbe.available === true) return true;
+    if (
+        secretServiceProbe.available === false &&
+        Date.now() - secretServiceProbe.checkedAt < SECRET_SERVICE_RETRY_MS
+    ) {
+        return false;
+    }
 
+    let available = false;
     try {
         const bus = Gio.bus_get_sync(Gio.BusType.SESSION, null);
         await new Promise((resolve, reject) => {
@@ -347,13 +419,13 @@ async function hasSecretService() {
                 },
             );
         });
-        secretServiceAvailable = true;
+        available = true;
     } catch (error) {
         debug('Secret Service probe failed', error?.message);
-        secretServiceAvailable = false;
     }
 
-    return secretServiceAvailable;
+    secretServiceProbe = { available, checkedAt: Date.now() };
+    return available;
 }
 
 /**

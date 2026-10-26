@@ -84,6 +84,33 @@ All notable changes to Zappix are recorded here. The format follows
 
 ### Fixed
 
+- **A server could stay "Not configured" for the whole session after login.**
+  `SecretStore.lookup()` returned `''` both when no token was stored and when
+  the keyring could not answer, and the poller latched that as
+  `UNCONFIGURED`. A locked keyring at startup — the `Default_keyring` unlock
+  prompt was still open when the extension enabled — therefore hid a perfectly
+  good credential until the next shell restart. A keyring failure now surfaces
+  as `CredentialUnavailableError`: the card reads "Waiting for the login
+  keyring…" while the poller retries (15 s → 120 s), and a keyring-installed
+  session with an empty file fallback is no longer mistaken for a missing
+  token. A working client also keeps the credential it already authenticated
+  with instead of having it blanked by a transient lookup failure.
+- **A failed keyring probe was cached for the life of the process.** At login
+  the Secret Service is often not activatable within the 2 s probe; the
+  negative answer then sent every lookup to the empty file until the shell
+  restarted. Negative probes now expire after 30 s and are retried, and a
+  failed `gi://Secret` import is distinguished from a service that is merely
+  late.
+- **Opening the dropdown did not retry a server with no client.** `refresh()`
+  and menu-open refreshes only called `_pollOnce()`, which returned early when
+  no client existed, so a transient credential failure had no manual recovery
+  path either. A poll now rebuilds the client when one is missing, with the
+  lookup de-duplicated against a concurrent `reconfigure()`.
+- **Re-entering an API token did not reach the running extension.** A
+  token-only save leaves the `servers` JSON unchanged, so no GSettings signal
+  fired and the shell kept the credential it read at startup. The preferences
+  window now bumps a new `credentials-revision` key on every credential write
+  or removal, which the extension treats as a reconfigure trigger.
 - **A visible detail line collapsed the dropdown to one row of tiles.**
   `.zappix-tile-detail` had `margin-top: -3px`; St reads negative lengths as
   unsigned, so the label asked for 2³² px of height. Its tile row grew past

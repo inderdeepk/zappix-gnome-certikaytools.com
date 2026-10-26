@@ -243,6 +243,31 @@ export class ZappixSettings {
     }
 
     /**
+     * Counter bumped by the preferences window after a credential write.
+     *
+     * A token-only save does not change the *servers* JSON, so without a
+     * second signal a running extension would keep the credential it read at
+     * startup until the next login.
+     *
+     * @returns {number}
+     */
+    get credentialsRevision() {
+        const value = Number(this._get('credentials-revision'));
+        return Number.isInteger(value) && value >= 0 ? value : 0;
+    }
+
+    /**
+     * Tell the shell process that a stored credential changed.
+     */
+    bumpCredentialsRevision() {
+        try {
+            this._settings.set_uint('credentials-revision', this.credentialsRevision + 1);
+        } catch (error) {
+            logError(error, 'Zappix: cannot bump "credentials-revision"');
+        }
+    }
+
+    /**
      * Persist a server list after validating it.
      *
      * @param {object[]} servers

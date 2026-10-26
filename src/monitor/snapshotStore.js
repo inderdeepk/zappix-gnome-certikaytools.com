@@ -137,6 +137,28 @@ export function isStale(snapshot, nowSeconds, staleAfter = STALE_AFTER_SECONDS) 
 }
 
 /**
+ * Snapshot for "the credential store is not answering yet".
+ *
+ * Distinct from UNCONFIGURED: the user's setup is fine, the keyring merely
+ * could not be read (locked at login, unlock prompt timed out, daemon still
+ * starting). The previous data is kept and the status stays LOADING so the
+ * poller can retry without accusing the user of not having configured a
+ * token.
+ *
+ * @param {object} previous snapshot from `initialSnapshot`/`failureSnapshot`
+ * @param {string} message short explanation for the card
+ * @returns {object}
+ */
+export function credentialWaitSnapshot(previous, message) {
+    return {
+        ...previous,
+        status: SERVER_STATUS.LOADING,
+        error: String(message ?? ''),
+        errorKind: 'credentials',
+    };
+}
+
+/**
  * Order servers for display: alarms first, then healthy, then unreachable.
  *
  * Within a group the configured order is preserved, because an operator's own
@@ -278,7 +300,12 @@ export function describeServer(
     pluralise = (singular, plural, count) => (count === 1 ? singular : plural),
 ) {
     if (snapshot.status === SERVER_STATUS.UNCONFIGURED) return 'Not configured';
-    if (snapshot.status === SERVER_STATUS.LOADING) return 'Connecting…';
+    if (snapshot.status === SERVER_STATUS.LOADING) {
+        // A locked keyring is not a connection attempt; saying "Connecting…"
+        // hides the actual reason the panel is empty.
+        if (snapshot.errorKind === 'credentials' && snapshot.error) return snapshot.error;
+        return 'Connecting…';
+    }
     if (snapshot.status === SERVER_STATUS.ERROR && snapshot.hosts.length === 0) {
         return snapshot.error || 'Unreachable';
     }
