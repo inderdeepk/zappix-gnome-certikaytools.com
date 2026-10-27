@@ -159,6 +159,43 @@ the sparkline degrades to "no curve".
 
 ---
 
+## `trend.get`
+
+```json
+{
+  "output": ["itemid", "clock", "num", "value_min", "value_avg", "value_max"],
+  "history": 0,
+  "itemids": ["50740", "…"],
+  "time_from": 1791840000,
+  "time_till": 1792703600,
+  "sortfield": "clock",
+  "sortorder": "ASC",
+  "limit": 12000
+}
+```
+
+One row per item per **hour**, carrying the hour's count and min/avg/max. The
+stock templates keep raw history for about an hour and trends for a week, so a
+24-hour curve cannot come from `history.get` — it would return one hour of data,
+or truncate at the row cap and show the wrong hours.
+
+Two consumers:
+
+* The trend window (three hours or more) plots `value_max`, so the curve's
+  highest point is the window's true peak and the chart scales to it. Items with
+  `trends: 0` (the stock templates set it on a few) fall back to `history.get`.
+* The Network tile's calendar-month total integrates `value_avg` over whole
+  hours: a bits-per-second rate × 3600 s ÷ 8 is the traffic that hour carried.
+  The month window is rounded down to the hour and the response is cached for
+  30 minutes — it is up to ~744 rows per item and changes hourly.
+
+Like `history.get`, `itemids` may mix only items of one value type; text types
+have no trends at all, so the client groups by type and skips anything that is
+not float or unsigned. A trend failure degrades the same way a history failure
+does: no curve, no month line, and the poll still succeeds.
+
+---
+
 ## `problem.get`
 
 ```json
@@ -205,7 +242,6 @@ expires sessions itself.
 | Method | Why not |
 |---|---|
 | `trigger.get` | `problem.get` already reflects trigger state after dependencies and maintenance |
-| `trend.get` | only worthwhile for windows longer than the sparkline shows |
 | `token.create` / `token.generate` | provisioning-only, and 7.0 does not return the secret |
 | `hostinterface.get` | `host.get`'s `selectInterfaces` is the same data in the same round trip |
 

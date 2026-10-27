@@ -240,6 +240,61 @@ export function historyGet({ itemIds, valueType, timeFrom, timeTill, limit = 200
     };
 }
 
+/** Fields a sparkline and a period total need from one hourly trend row. */
+export const TREND_OUTPUT_FIELDS = Object.freeze([
+    'itemid',
+    'clock',
+    'num',
+    'value_min',
+    'value_avg',
+    'value_max',
+]);
+
+/**
+ * Value types `trend.get` accepts.
+ *
+ * Trends are numeric aggregates, so the character/log/text types a history
+ * query tolerates would be rejected here.
+ */
+export const TREND_VALUE_TYPES = Object.freeze([
+    HISTORY_VALUE_TYPE.FLOAT,
+    HISTORY_VALUE_TYPE.UNSIGNED,
+]);
+
+/**
+ * `trend.get` — hourly aggregates, for windows raw history cannot cover.
+ *
+ * Zabbix keeps raw history for an hour or so on the stock templates and rolls
+ * everything else into one row per item per hour. A 24-hour curve and a
+ * calendar-month total therefore both come from here.
+ *
+ * `limit` is a hard cap on rows for the whole request, exactly as in
+ * `history.get`, so callers must size it from (items × hours).
+ *
+ * @param {object} options
+ * @param {string[]} options.itemIds
+ * @param {number} options.valueType one of TREND_VALUE_TYPES
+ * @param {number} options.timeFrom unix seconds
+ * @param {number} options.timeTill unix seconds
+ * @param {number} [options.limit=2000]
+ * @returns {{method: string, params: object}}
+ */
+export function trendGet({ itemIds, valueType, timeFrom, timeTill, limit = 2000 }) {
+    return {
+        method: 'trend.get',
+        params: {
+            output: [...TREND_OUTPUT_FIELDS],
+            history: valueType,
+            itemids: [...itemIds],
+            time_from: Math.floor(timeFrom),
+            time_till: Math.floor(timeTill),
+            sortfield: 'clock',
+            sortorder: 'ASC',
+            limit,
+        },
+    };
+}
+
 /**
  * `problem.get` — unresolved problems for a set of hosts.
  *
@@ -277,13 +332,17 @@ export function problemGet({ hostIds, limit = 50, unacknowledgedOnly = false }) 
  * stores a metric as text lands in its own group.
  *
  * @param {Array<{itemid: string, value_type: string|number}>} items
+ * @param {object} [options]
+ * @param {number[]|null} [options.only=null] keep just these value types
  * @returns {Map<number, string[]>}
  */
-export function groupItemsByValueType(items) {
+export function groupItemsByValueType(items, { only = null } = {}) {
+    const allowed = only ? new Set(only.map(Number)) : null;
     const groups = new Map();
     for (const item of items) {
         const valueType = Number.parseInt(String(item.value_type ?? ''), 10);
         if (!Number.isInteger(valueType)) continue;
+        if (allowed && !allowed.has(valueType)) continue;
         const list = groups.get(valueType) ?? [];
         list.push(String(item.itemid));
         groups.set(valueType, list);

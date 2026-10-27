@@ -67,9 +67,9 @@
     </key>
 
     <key name="history-window-minutes" type="i">
-      <default>60</default>
+      <default>1440</default>
       <summary>Sparkline Window (minutes)</summary>
-      <description>Width of the trend history shown behind each metric. 60 minutes gives a one-hour sparkline; 1440 covers a full day.</description>
+      <description>Width of the trend history shown behind each metric. 60 minutes gives a one-hour sparkline; 1440 covers a full day. Windows of three hours or more are drawn from Zabbix's hourly trends so the curve can reach back further than raw history is kept.</description>
     </key>
 
     <key name="timeout-seconds" type="i">

@@ -11,7 +11,12 @@ import {
     buildSparklineGeometry,
     computeStats,
     downsample,
+    hourStartSeconds,
+    monthStartSeconds,
+    nearestPointIndex,
+    sumTrendBytes,
     toNumericSeries,
+    toTrendSeries,
     trendDirection,
 } from '../src/model/series.js';
 
@@ -184,23 +189,23 @@ await runTests([
         },
     ],
     [
-        'axisForKind fits percentages to their window with a minimum span',
+        'axisForKind scales percentages from zero to the window peak',
         () => {
             assertDeepEqual(axisForKind('percent', series([60, 62, 64])), {
-                floor: 52,
-                ceiling: 72,
+                floor: 0,
+                ceiling: 64,
             });
+            assertDeepEqual(axisForKind('percent', series([2, 3])), { floor: 0, ceiling: 3 });
+            assertDeepEqual(axisForKind('percent', series([5, 95])), { floor: 0, ceiling: 95 });
         },
     ],
     [
-        'axisForKind slides a percentage window back inside 0..100',
+        'axisForKind keeps a flat percentage centred instead of pinning it to the top',
         () => {
-            assertDeepEqual(axisForKind('percent', series([2, 3])), { floor: 0, ceiling: 20 });
-            assertDeepEqual(axisForKind('percent', series([98, 99])), {
-                floor: 80,
-                ceiling: 100,
+            assertDeepEqual(axisForKind('percent', series([66, 66, 66])), {
+                floor: 56,
+                ceiling: 76,
             });
-            assertDeepEqual(axisForKind('percent', series([5, 95])), { floor: 0, ceiling: 100 });
         },
     ],
     [
@@ -223,6 +228,105 @@ await runTests([
         () => {
             const rate = axisForKind('rate', []);
             assert(rate.ceiling === null || rate.ceiling >= 1, 'never a zero-height axis');
+        },
+    ],
+    [
+        'buildSparklineGeometry places samples by timestamp, not index',
+        () => {
+            const geometry = buildSparklineGeometry(
+                [
+                    { t: 0, v: 0 },
+                    { t: 3600, v: 50 },
+                    { t: 7200, v: 100 },
+                    { t: 7500, v: 100 },
+                ],
+                { width: 100, height: 40, paddingX: 0, paddingY: 0, floor: 0, ceiling: 100 },
+            );
+            // The last two samples are five minutes apart, so they land at the
+            // right edge together — a trend hour is not stretched to fill.
+            assertClose(geometry.points[0].x, 0, 1e-6);
+            assertClose(geometry.points[1].x, 48, 1e-6);
+            assertClose(geometry.points[2].x, 96, 1e-6);
+            assertClose(geometry.points[3].x, 100, 1e-6);
+        },
+    ],
+    [
+        'buildSparklineGeometry falls back to even spacing without timestamps',
+        () => {
+            const geometry = buildSparklineGeometry([{ v: 0 }, { v: 50 }, { v: 100 }], {
+                width: 100,
+                height: 40,
+                paddingX: 0,
+                paddingY: 0,
+            });
+            assertClose(geometry.points[1].x, 50, 1e-6);
+        },
+    ],
+    [
+        'nearestPointIndex picks the sample under the pointer',
+        () => {
+            const points = [{ x: 0 }, { x: 10 }, { x: 20 }];
+            assertEqual(nearestPointIndex(points, -4), 0);
+            assertEqual(nearestPointIndex(points, 4), 0);
+            assertEqual(nearestPointIndex(points, 6), 1);
+            assertEqual(nearestPointIndex(points, 16), 2);
+            assertEqual(nearestPointIndex(points, 99), 2);
+            assertEqual(nearestPointIndex([], 5), -1);
+        },
+    ],
+    [
+        'toTrendSeries plots hourly peaks in time order',
+        () => {
+            const points = toTrendSeries([
+                { clock: '7200', value_avg: '20', value_max: '44' },
+                { clock: '3600', value_avg: '10', value_max: '12.5' },
+                { clock: 'n/a', value_max: '99' },
+            ]);
+            assertDeepEqual(points, [
+                { t: 3600, v: 12.5 },
+                { t: 7200, v: 44 },
+            ]);
+        },
+    ],
+    [
+        'toTrendSeries can plot a different aggregate',
+        () => {
+            const points = toTrendSeries([{ clock: '3600', value_avg: '10', value_max: '12.5' }], {
+                field: 'value_avg',
+            });
+            assertDeepEqual(points, [{ t: 3600, v: 10 }]);
+        },
+    ],
+    [
+        'sumTrendBytes integrates bits per second over whole hours',
+        () => {
+            // 8 Mbit/s held for an hour is 3.6 GB; two such hours are 7.2 GB.
+            const bytes = sumTrendBytes([{ value_avg: '8000000' }, { value_avg: '8000000' }]);
+            assertClose(bytes, 7.2e9);
+            assertEqual(sumTrendBytes([]), null);
+            assertEqual(sumTrendBytes([{ value_avg: 'n/a' }]), null);
+        },
+    ],
+    [
+        'sumTrendBytes ignores negative averages',
+        () => {
+            assertEqual(sumTrendBytes([{ value_avg: '-5' }]), null);
+        },
+    ],
+    [
+        'monthStartSeconds returns local midnight on the first of the month',
+        () => {
+            const now = new Date(2026, 9, 26, 21, 49).getTime() / 1000;
+            const start = monthStartSeconds(now);
+            const expected = new Date(2026, 9, 1, 0, 0, 0, 0).getTime() / 1000;
+            assertEqual(start, Math.floor(expected));
+        },
+    ],
+    [
+        'hourStartSeconds rounds down to the top of the hour',
+        () => {
+            assertEqual(hourStartSeconds(3600 + 59), 3600);
+            assertEqual(hourStartSeconds(3600), 3600);
         },
     ],
     [

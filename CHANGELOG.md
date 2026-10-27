@@ -8,6 +8,25 @@ All notable changes to Zappix are recorded here. The format follows
 
 ### Added
 
+- **The trend curve is a 24-hour curve and reads out on hover.** Hovering a
+  tile's curve draws a crosshair on the sample nearest the pointer and floats
+  `15:30 · 66%` beside it — the real reading and its time, never an
+  interpolation. The curve is drawn from Zabbix's hourly trends, so the default
+  trend window is now a full day even though the stock templates keep raw
+  history for about an hour; the newest reading is appended so the line reaches
+  "now" instead of stopping at the top of the hour. Windows shorter than three
+  hours, and items with trend storage disabled, still use `history.get`.
+
+- **Percentage curves are scaled to the window's peak.** The top edge of the
+  strip is the highest reading over the window, so a day that touched 87 %
+  fills it at 87 % and the current level sits where it belongs. A genuinely
+  flat series keeps a centred band rather than drawing a line pinned to the top.
+
+- **Network shows the calendar month's traffic.** A third line (`1.4 TB this
+  month`) integrates the hourly trends of every interface, both directions —
+  the number a metered VPS runs out of. It is fetched only while the dropdown is
+  open, rounded to the hour and cached for 30 minutes.
+
 - **Tiles carry a fuller second line.** Memory and Swap read `5/7.5 GB`,
   Disk adds the mount (`42.9/64 GB · /hostfs`, derived from
   `vfs.fs.size[/hostfs,pused]` → `vfs.fs.size[/hostfs,total]`), CPU shows
@@ -17,8 +36,8 @@ All notable changes to Zappix are recorded here. The format follows
   no second line.
 
 - Panel indicator with a hover-opened dropdown (click-to-pin supported).
-- Per-server cards with CPU, memory, disk and network tiles, sparklines and
-  utilization meters; optional swap, load, uptime and process metrics.
+- Per-server cards with CPU, memory, disk and network tiles, 24-hour trend
+  curves and a hover readout; optional swap, load, uptime and process metrics.
 - Open-problem list with Zabbix severity mapping and `NEW`/`ACK` tags.
 - Multi-server support with a switcher, per-server accent colours and automatic
   ordering (alarms first, unreachable last).
@@ -40,17 +59,17 @@ All notable changes to Zappix are recorded here. The format follows
   DeliverEdge monitoring plane (`monitoring.<domain>`, host `deliveredge-prod`).
 - Container metric (`docker.containers.running`), on by default for hosts built
   from the Docker agent 2 template.
-- 339 unit tests, an import smoke test, a preferences UI smoke test, and a live
+- 389 unit tests, an import smoke test, a preferences UI smoke test, and a live
   integration test against a real Zabbix server.
 
 ### Changed
 
 - **Dropdown visual pass.** Tile numbers stay neutral while healthy and only
   turn amber or red when they need attention (the panel's rule); units are set
-  smaller than the figure (`46.9` kb/s) with tabular digits. Sparklines are
-  fitted to their own window with a minimum span instead of a flat 0–100 axis —
-  the meter already shows the level, so the curve now shows movement — and
-  mark the latest sample. Tiles in a row end on the same line. The brand row is
+  smaller than the figure (`46.9` kb/s) with tabular digits. The utilization bar
+  under each curve is gone — it repeated the headline number and cost a line per
+  tile — so the curve itself now carries the level, and the latest sample is
+  marked. Tiles in a row end on the same line. The brand row is
   quieter and the server name larger; with one server the duplicate header dot
   and *Refresh all* are hidden. The host dot sits beside the host name, and the
   reason behind a non-green dot (*Agent unreachable*, *In maintenance*, *No new

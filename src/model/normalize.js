@@ -20,8 +20,14 @@
 
 import { AGGREGATE, DETAIL_KIND, TRANSFORM, VALUE_KIND, usesThresholds } from './metricCatalog.js';
 import { SEVERITY, classifyPercent, classifyProblemSeverity, worstSeverity } from './severity.js';
-import { toNumericSeries } from './series.js';
-import { formatBitRatePair, formatByteRatio, formatCount, formatLoad } from '../shared/format.js';
+import { toNumericSeries, toTrendSeries, sumTrendBytes } from './series.js';
+import {
+    formatBitRatePair,
+    formatByteRatio,
+    formatBytes,
+    formatCount,
+    formatLoad,
+} from '../shared/format.js';
 import { format, gettext as _, ngettext } from '../shared/i18n.js';
 
 /** Zabbix `value_type` codes that carry a number we can plot. */
@@ -249,6 +255,9 @@ export function resolveMetric(metric, items, { thresholds, maintenance = false }
         // load, the network split, or a stopped/total count. Empty when the
         // host does not publish the supporting items.
         detail,
+        // A period total that comes from trends rather than items, e.g. the
+        // network's `1.4 TB this month`. Populated by `buildHostSnapshot`.
+        detailSecondary: '',
         severity,
         available: value !== null,
         sourceItemKey: dominant?.item?.key_ ?? '',
@@ -299,6 +308,107 @@ export function normaliseSeriesRows(rows) {
         result.set(itemId, toNumericSeries(list));
     }
     return result;
+}
+
+/**
+ * Merge `trend.get` rows into per-item series of hourly peaks.
+ *
+ * Same shape as `normaliseSeriesRows`, so the sparkline cannot tell which
+ * endpoint its curve came from.
+ *
+ * @param {object[]} rows
+ * @returns {Map<string, Array<{t:number, v:number}>>}
+ */
+export function normaliseTrendRows(rows) {
+    const grouped = new Map();
+
+    for (const row of rows ?? []) {
+        const itemId = String(row?.itemid ?? '');
+        if (!itemId) continue;
+        const list = grouped.get(itemId) ?? [];
+        list.push(row);
+        grouped.set(itemId, list);
+    }
+
+    const result = new Map();
+    for (const [itemId, list] of grouped) {
+        const points = toTrendSeries(list);
+        if (points.length > 0) result.set(itemId, points);
+    }
+    return result;
+}
+
+/**
+ * Bytes per item across a set of rate trends (the calendar-month total).
+ *
+ * @param {object[]} rows `trend.get` rows for networked rate items
+ * @returns {Map<string, number>}
+ */
+export function normaliseTrendBytes(rows) {
+    const grouped = new Map();
+
+    for (const row of rows ?? []) {
+        const itemId = String(row?.itemid ?? '');
+        if (!itemId) continue;
+        const list = grouped.get(itemId) ?? [];
+        list.push(row);
+        grouped.set(itemId, list);
+    }
+
+    const result = new Map();
+    for (const [itemId, list] of grouped) {
+        const bytes = sumTrendBytes(list);
+        if (bytes !== null) result.set(itemId, bytes);
+    }
+    return result;
+}
+
+/**
+ * Put the newest reading at the end of a trend curve.
+ *
+ * Trend rows are only written when an hour closes, so a 24-hour curve would
+ * stop up to an hour before the number above it — and the marker that ties the
+ * curve to that number would sit in the middle of the tile.
+ *
+ * @param {Array<{t:number, v:number}>} series
+ * @param {object} metricView result of `resolveMetric`
+ * @returns {Array<{t:number, v:number}>}
+ */
+export function appendLatestSample(series, metricView) {
+    if (!Array.isArray(series) || series.length === 0) return series ?? [];
+
+    const t = Number(metricView?.updatedAt);
+    const v = Number(metricView?.value);
+    if (!Number.isFinite(t) || !Number.isFinite(v) || t <= 0) return series;
+
+    const last = series[series.length - 1];
+    if (last && last.t >= t) return series;
+
+    return [...series, { t, v }];
+}
+
+/**
+ * `1.4 TB this month`, summed over every item behind a metric.
+ *
+ * The month total is traffic, not a level, so it cannot come from a single
+ * reading: each source item contributes the bytes its rate covered.
+ *
+ * @param {object} metricView result of `resolveMetric`
+ * @param {Map<string, number>} monthlyBytesByItemId
+ * @returns {string} '' when no source item has a total
+ */
+export function monthlyTotalDetail(metricView, monthlyBytesByItemId) {
+    if (!monthlyBytesByItemId || monthlyBytesByItemId.size === 0) return '';
+
+    let total = null;
+    for (const itemId of metricView.sourceItemIds ?? []) {
+        const bytes = monthlyBytesByItemId.get(itemId);
+        if (!Number.isFinite(bytes)) continue;
+        total = (total ?? 0) + bytes;
+    }
+    if (total === null) return '';
+
+    return format(_('{size} this month'), { size: formatBytes(total) });
 }
 
 /**
@@ -764,9 +874,18 @@ export function summariseProblems(problems, { maxItems = 5 } = {}) {
  * @param {object[]} options.metrics catalog entries to resolve
  * @param {{warn:number, crit:number}} options.thresholds
  * @param {Map<string, Array<{t:number,v:number}>>} [options.seriesByItemId]
+ * @param {Map<string, number>} [options.monthlyBytesByItemId] bytes per item
+ *        over the current calendar month, from trend rows
  * @returns {object}
  */
-export function buildHostSnapshot({ host, items, metrics, thresholds, seriesByItemId = null }) {
+export function buildHostSnapshot({
+    host,
+    items,
+    metrics,
+    thresholds,
+    seriesByItemId = null,
+    monthlyBytesByItemId = null,
+}) {
     const hostItems = (items ?? []).filter((item) => String(item?.hostid ?? '') === host.hostId);
 
     const resolved = metrics.map((metric) => {
@@ -775,9 +894,12 @@ export function buildHostSnapshot({ host, items, metrics, thresholds, seriesByIt
             maintenance: host.maintenance,
         });
         if (seriesByItemId) {
-            view.series = buildMetricSeries(view, seriesByItemId);
+            view.series = appendLatestSample(buildMetricSeries(view, seriesByItemId), view);
         } else {
             view.series = [];
+        }
+        if (monthlyBytesByItemId && metric.detail?.monthlyTotal) {
+            view.detailSecondary = monthlyTotalDetail(view, monthlyBytesByItemId);
         }
         return view;
     });

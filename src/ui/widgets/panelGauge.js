@@ -14,7 +14,7 @@
 // battery percentage, and is only tinted when the metric is alarming: calm is
 // quiet, trouble is loud.
 //
-// Cairo for the same reason as the meter: arcs with round caps and a
+// Cairo for the same reason as the sparkline: arcs with round caps and a
 // knock-out are one paint pass here and half a dozen actors in St.
 //
 // Shell-side module (St + cairo).

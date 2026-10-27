@@ -8,6 +8,7 @@
 import { assert, assertClose, assertDeepEqual, assertEqual, runTests } from './testUtils.js';
 import {
     aggregateValues,
+    appendLatestSample,
     applyTransform,
     buildHostSnapshot,
     buildMetricSeries,
@@ -15,6 +16,8 @@ import {
     matchCandidate,
     normaliseHost,
     normaliseSeriesRows,
+    normaliseTrendBytes,
+    normaliseTrendRows,
     orderHosts,
     rescoreSnapshot,
     resolveMetric,
@@ -630,6 +633,83 @@ await runTests([
         },
     ],
 
+    // ── trend series ────────────────────────────────────────────────────
+    [
+        'normaliseTrendRows groups rows per item and plots hourly peaks',
+        () => {
+            const map = normaliseTrendRows([
+                {
+                    itemid: 'a',
+                    clock: '7200',
+                    num: '60',
+                    value_min: '1',
+                    value_avg: '5',
+                    value_max: '9',
+                },
+                {
+                    itemid: 'a',
+                    clock: '3600',
+                    num: '60',
+                    value_min: '1',
+                    value_avg: '4',
+                    value_max: '8',
+                },
+                {
+                    itemid: 'b',
+                    clock: '3600',
+                    num: '60',
+                    value_min: '0',
+                    value_avg: '1',
+                    value_max: '2',
+                },
+            ]);
+            assertDeepEqual(map.get('a'), [
+                { t: 3600, v: 8 },
+                { t: 7200, v: 9 },
+            ]);
+            assertDeepEqual(map.get('b'), [{ t: 3600, v: 2 }]);
+        },
+    ],
+    [
+        'normaliseTrendRows drops rows with no usable value',
+        () => {
+            const map = normaliseTrendRows([{ itemid: 'a', clock: '3600', value_max: 'n/a' }]);
+            assertEqual(map.has('a'), false);
+        },
+    ],
+    [
+        'normaliseTrendBytes totals the month per item',
+        () => {
+            const map = normaliseTrendBytes([
+                { itemid: 'in', clock: '3600', value_avg: '8000000' },
+                { itemid: 'in', clock: '7200', value_avg: '8000000' },
+                { itemid: 'out', clock: '3600', value_avg: '800000' },
+            ]);
+            assertClose(map.get('in'), 7.2e9);
+            assertClose(map.get('out'), 3.6e8);
+        },
+    ],
+    [
+        'appendLatestSample anchors a curve at the newest reading',
+        () => {
+            const series = [
+                { t: 3600, v: 8 },
+                { t: 7200, v: 9 },
+            ];
+            const next = appendLatestSample(series, { updatedAt: 7250, value: 12 });
+            assertDeepEqual(next, [
+                { t: 3600, v: 8 },
+                { t: 7200, v: 9 },
+                { t: 7250, v: 12 },
+            ]);
+            // The input is not mutated, and an already-current curve is left alone.
+            assertEqual(series.length, 2);
+            assertEqual(appendLatestSample(series, { updatedAt: 7200, value: 9 }), series);
+            assertDeepEqual(appendLatestSample([], { updatedAt: 7200, value: 9 }), []);
+            assertDeepEqual(appendLatestSample(series, { updatedAt: 0, value: 9 }), series);
+        },
+    ],
+
     // ── snapshots ───────────────────────────────────────────────────────
     [
         'buildHostSnapshot only uses items belonging to the host',
@@ -675,7 +755,9 @@ await runTests([
                 ]),
             });
 
-            assertEqual(snapshot.metrics[0].series.length, 2);
+            assertEqual(snapshot.metrics[0].series.length, 3);
+            // The newest reading is appended so a trend curve reaches "now".
+            assertDeepEqual(snapshot.metrics[0].series.at(-1), { t: 1700000000, v: 10 });
         },
     ],
     [
@@ -1262,6 +1344,65 @@ await runTests([
 
             assertEqual(view.value, 2500000);
             assertEqual(view.detail, '↓ 2.1 · ↑ 0.4 Mb/s');
+            // The period total only arrives with the poll's trend rows.
+            assertEqual(view.detailSecondary, '');
+        },
+    ],
+    [
+        'buildHostSnapshot adds the calendar-month total to the network tile',
+        () => {
+            const snapshot = buildHostSnapshot({
+                host: { hostId: 'h1', name: 'web', endpoint: '', maintenance: false },
+                items: [
+                    item({
+                        itemid: 'in',
+                        hostid: 'h1',
+                        key_: 'net.if.in["eth0"]',
+                        value_type: '3',
+                        units: 'bps',
+                        lastvalue: '2100000',
+                    }),
+                    item({
+                        itemid: 'out',
+                        hostid: 'h1',
+                        key_: 'net.if.out["eth0"]',
+                        value_type: '3',
+                        units: 'bps',
+                        lastvalue: '400000',
+                    }),
+                ],
+                metrics: [getMetric('network')],
+                thresholds: THRESHOLDS,
+                monthlyBytesByItemId: new Map([
+                    ['in', 1.2e12],
+                    ['out', 0.2e12],
+                ]),
+            });
+
+            assertEqual(snapshot.metrics[0].detail, '↓ 2.1 · ↑ 0.4 Mb/s');
+            assertEqual(snapshot.metrics[0].detailSecondary, '1.3 TB this month');
+        },
+    ],
+    [
+        'buildHostSnapshot leaves the month line off metrics that do not ask for it',
+        () => {
+            const snapshot = buildHostSnapshot({
+                host: { hostId: 'h1', name: 'web', endpoint: '', maintenance: false },
+                items: [
+                    item({
+                        itemid: 'cpu',
+                        hostid: 'h1',
+                        key_: 'system.cpu.util',
+                        units: '%',
+                        lastvalue: '10',
+                    }),
+                ],
+                metrics: [getMetric('cpu')],
+                thresholds: THRESHOLDS,
+                monthlyBytesByItemId: new Map([['cpu', 5e9]]),
+            });
+
+            assertEqual(snapshot.metrics[0].detailSecondary, '');
         },
     ],
     [

@@ -73,7 +73,9 @@ export function buildMonitoringPage({ settings }) {
             settings: gioSettings,
             key: 'history-window-minutes',
             title: _('Trend window'),
-            subtitle: _('Minutes of history drawn behind each tile.'),
+            subtitle: _(
+                'Minutes of history behind the curve on each tile. Three hours or more is drawn from Zabbix trends, so a full day works without long raw-history retention.',
+            ),
             min: HISTORY_WINDOW_MIN,
             max: HISTORY_WINDOW_MAX,
             step: 15,

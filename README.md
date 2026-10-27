@@ -2,8 +2,9 @@
 
 A panel icon that opens a live system-utilization dashboard for every Zabbix
 server you configure. Hover it and the dropdown appears: CPU, memory, disk and
-network per host, with sparklines, a problem list, and severity colours that mean
-the same thing everywhere in the extension.
+network per host, with 24-hour trend curves you can hover for an exact reading,
+a problem list, and severity colours that mean the same thing everywhere in the
+extension.
 
 It talks to the Zabbix JSON-RPC API directly — no PHP frontend required, no
 agent on your desktop, nothing to install on the server beyond Zabbix itself.
@@ -14,13 +15,14 @@ agent on your desktop, nothing to install on the server beyond Zabbix itself.
 │ ┌────────────────────┐ ┌────────────────────┐        │
 │ │ CPU           ▲    │ │ Memory             │        │
 │ │ 87%                │ │ 45%                │        │
+│ │ 8 cores · load 0.42│ │ 3.6/8 GB           │        │
 │ │ ▁▂▃▅▇▆▅▃▂▁▂▃▅▇     │ │ ▂▃▄▅▄▃▂▃▄▅▄▃       │        │
-│ │ ▬▬▬▬▬▬▬▬▬▬▬▬░░     │ │ ▬▬▬▬▬░░░░░░░░░     │        │
 │ └────────────────────┘ └────────────────────┘        │
 │ ┌────────────────────┐ ┌────────────────────┐        │
 │ │ Disk         ▲     │ │ Network            │        │
 │ │ 94%                │ │ 2.5 Mb/s           │        │
-│ │ ▂▂▃▃▄▄▅▅▆▆▇▇       │ │ ▃▅▂▇▄▆▃▅▂▇▄        │        │
+│ │ 30/32 GB · /var    │ │ ↓ 2.1 · ↑ 0.4 Mb/s │        │
+│ │ ▂▂▃▃▄▄▅▅▆▆▇▇       │ │ 14.2 TB this month │        │
 │ └────────────────────┘ └────────────────────┘        │
 │ ▲ high  Disk /var is 94% full              14:02     │
 │ Updated 12s ago · Zabbix 7.0.32        Open Zabbix   │
@@ -30,8 +32,8 @@ agent on your desktop, nothing to install on the server beyond Zabbix itself.
 ## Why it is built this way
 
 **A poll costs one round trip per category.** Live values come from `item.get`'s
-`lastvalue` field, not from `history.get`. History is fetched only while the
-dropdown is open — the panel-only poll never pays for sparklines.
+`lastvalue` field, not from `history.get`. History and trends are fetched only
+while the dropdown is open — the panel-only poll never pays for the curves.
 
 **Missing data is never green.** A value that could not be read renders as an em
 dash and classifies as *unknown*. An agent that stopped reporting must not look

@@ -5,11 +5,11 @@
 // can never leak into another server's requests, and destroying a card in
 // preferences destroys everything it was holding.
 //
-// The public surface is task-shaped (`getHosts`, `getItems`, `getHistory`)
-// rather than RPC-shaped (`request('host.get', …)`) so callers do not have to
-// remember which fields each method needs or which value types may be batched
-// together. `request` stays available for the preferences window's "test
-// connection" probe.
+// The public surface is task-shaped (`getHosts`, `getItems`, `getHistory`,
+// `getTrends`) rather than RPC-shaped (`request('host.get', …)`) so callers do
+// not have to remember which fields each method needs or which value types may
+// be batched together. `request` stays available for the preferences window's
+// "test connection" probe.
 //
 // Shell-side module (uses Gio for cancellation); the pure wire-format work it
 // delegates to `zabbixRpc` is unit-tested separately.
@@ -35,6 +35,8 @@ import {
     hostGet,
     itemGet,
     problemGet,
+    trendGet,
+    TREND_VALUE_TYPES,
     userLogin,
     userLogout,
 } from './zabbixMethods.js';
@@ -47,6 +49,9 @@ const MAX_RETRIES = 2;
 
 /** Backoff between retries, in milliseconds. */
 const RETRY_BACKOFF_MS = [250, 900];
+
+/** How many trend responses one client keeps cached. */
+const TREND_CACHE_ENTRIES = 8;
 
 /**
  * Client for one Zabbix server.
@@ -105,6 +110,17 @@ export class ZabbixClient {
         this._sessionId = '';
 
         this._nextId = 1;
+
+        /**
+         * Cached `trend.get` responses, keyed by the exact window and item set.
+         *
+         * A calendar-month total is ~720 rows per item and changes once an
+         * hour; refetching it on every dropdown refresh would cost far more
+         * than the number it feeds.
+         *
+         * @type {Map<string, {rows: object[], expiresAt: number}>}
+         */
+        this._trendCache = new Map();
     }
 
     /** @returns {string} */
@@ -286,6 +302,87 @@ export class ZabbixClient {
             }
             if (Array.isArray(entry.result)) rows.push(...entry.result);
         }
+        return rows;
+    }
+
+    /**
+     * `trend.get` — hourly aggregates for long windows.
+     *
+     * Used for two things the raw history endpoint cannot serve: the 24-hour
+     * curve (stock templates keep an hour of history and a week of trends) and
+     * the calendar-month network total.
+     *
+     * @param {object} options
+     * @param {Array<{itemid: string, value_type: string|number}>} options.items
+     * @param {number} options.fromSeconds unix seconds
+     * @param {number} options.toSeconds unix seconds
+     * @param {number} [options.maxRows=12000]
+     * @param {number} [options.cacheTtlMs=0] reuse a response for this long
+     * @param {number} [options.nowMs=Date.now()] injectable clock for the cache
+     * @returns {Promise<object[]>}
+     */
+    async getTrends({
+        items,
+        fromSeconds,
+        toSeconds,
+        maxRows = 12000,
+        cacheTtlMs = 0,
+        nowMs = Date.now(),
+    }) {
+        if (!items || items.length === 0) return [];
+
+        const timeFrom = Math.floor(fromSeconds);
+        const timeTill = Math.floor(toSeconds);
+        if (!Number.isFinite(timeFrom) || !Number.isFinite(timeTill) || timeTill <= timeFrom) {
+            return [];
+        }
+
+        const groups = groupItemsByValueType(items, { only: TREND_VALUE_TYPES });
+        if (groups.size === 0) return [];
+
+        const cacheKey = `${timeFrom}:${timeTill}:${items
+            .map((item) => String(item.itemid))
+            .sort()
+            .join(',')}`;
+        const cached = cacheTtlMs > 0 ? this._trendCache.get(cacheKey) : undefined;
+        if (cached && nowMs < cached.expiresAt) return cached.rows;
+
+        // Rows are capped globally, so size the per-item budget from the number
+        // of series: a month is ~744 hours, well inside the default cap.
+        const perItemRows = Math.max(24, Math.floor(maxRows / Math.max(1, items.length)));
+
+        const calls = [];
+        for (const [valueType, itemIds] of groups) {
+            calls.push(
+                trendGet({
+                    itemIds,
+                    valueType,
+                    timeFrom,
+                    timeTill,
+                    limit: Math.min(maxRows, perItemRows * itemIds.length),
+                }),
+            );
+        }
+
+        const entries = await this.batch(calls);
+        const rows = [];
+        for (const entry of entries) {
+            if (!entry.ok) {
+                // Trends feed the curve and the period total, never the
+                // headline value: a failure degrades, it does not blank.
+                warn(`trend query failed for ${this._server.id}`, entry.error?.message);
+                continue;
+            }
+            if (Array.isArray(entry.result)) rows.push(...entry.result);
+        }
+
+        if (cacheTtlMs > 0) {
+            if (this._trendCache.size >= TREND_CACHE_ENTRIES) {
+                this._trendCache.delete(this._trendCache.keys().next().value);
+            }
+            this._trendCache.set(cacheKey, { rows, expiresAt: nowMs + cacheTtlMs });
+        }
+
         return rows;
     }
 

@@ -129,7 +129,7 @@ export class ZappixSettings {
             this._get('history-window-minutes'),
             HISTORY_WINDOW_MIN,
             HISTORY_WINDOW_MAX,
-            60,
+            1440,
         );
     }
 

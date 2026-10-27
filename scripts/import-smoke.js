@@ -26,7 +26,6 @@ const SHELL_ONLY = new Set([
     'src/ui/dashboard.js',
     'src/ui/indicator.js',
     'src/ui/serverCard.js',
-    'src/ui/widgets/meter.js',
     'src/ui/widgets/metricTile.js',
     'src/ui/widgets/panelGauge.js',
     'src/ui/widgets/sparkline.js',

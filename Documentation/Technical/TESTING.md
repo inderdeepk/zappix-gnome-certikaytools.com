@@ -4,7 +4,7 @@
 
 | Command | Needs | Covers |
 |---|---|---|
-| `make test` | `gjs` (+ Node for parallelism) | 308 unit assertions across 15 suites |
+| `make test` | `gjs` (+ Node for parallelism) | 389 unit assertions across 17 suites |
 | `make check` | `gjs`, Node, optional display | parse, CSS balance, import smoke, prefs UI smoke |
 | `make lint` | `npm install` | ESLint correctness rules |
 | `gjs -m scripts/integration-test.js …` | a live Zabbix | the real request/response path |
@@ -23,11 +23,13 @@ summary line that `scripts/run-tests.mjs` parses.
 | `zabbixMethods.test.js` | exact parameters and field lists for every method |
 | `zabbixResponse.test.js` | Cloudflare Access and WAF shapes, HTML-instead-of-JSON, proxy status text |
 | `metricCatalog.test.js` | unique ids, valid kinds, threshold applicability, preference fallbacks |
-| `normalize.test.js` | item matching, transforms, aggregation, snapshot assembly (43 cases) |
-| `series.test.js` | downsampling preserves extremes, axis mapping, trend detection |
+| `normalize.test.js` | item matching, transforms, aggregation, trend series, snapshot assembly (77 cases) |
+| `series.test.js` | downsampling preserves extremes, 0 → peak percentage axis, timestamp placement, hover hit-testing, trend totals |
 | `severity.test.js` | threshold sanitising, "missing is never green", worst-of folding |
 | `format.test.js` | the exact strings on screen, em-dash fallbacks, unit scaling |
+| `appearance.test.js` | accent palettes, density tokens, light-panel colours |
 | `serverStore.test.js` | corrupt JSON, duplicate ids, legacy array form, list caps |
+| `secrets.test.js` | credential file parsing, keyring/file fallbacks |
 | `hover.test.js` | the open/close timing policy |
 | `backoff.test.js` | exponential ladder, ceiling, jitter band |
 | `snapshotStore.test.js` | failure preserves last-good data, ordering, panel summary |

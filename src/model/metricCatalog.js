@@ -305,9 +305,12 @@ export const METRICS = Object.freeze([
         ]),
         // The headline sums both directions; the second line puts them back
         // apart, because "47 kb/s" does not say whether the server is serving
-        // or downloading.
+        // or downloading. The third line adds the calendar-month traffic total,
+        // integrated from trend rows: on a metered VPS that number is the one
+        // that runs out.
         detail: Object.freeze({
             kind: DETAIL_KIND.DIRECTIONS,
+            monthlyTotal: true,
         }),
     }),
     Object.freeze({

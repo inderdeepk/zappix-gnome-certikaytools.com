@@ -65,7 +65,9 @@ MonitorService._pollOnce(server, mode)
        ├─ client.getItems()              item.get          (all hosts, all metrics, one call)
        ├─ client.getProblems()           problem.get       ┐ parallel with getItems
        └─ mode === full
-            └─ client.getHistory()       history.get       (one call per value_type)
+            ├─ client.getTrends()        trend.get         (24 h curve, ≥3 h window)
+            ├─ client.getHistory()       history.get       (short windows, trend-less items)
+            └─ client.getTrends()        trend.get         (calendar-month network total)
        └─ buildHostSnapshot() per host   → metrics[], severity, series
   └─ successSnapshot() / failureSnapshot()
   └─ onChange() → Indicator.update() → Dashboard.update()
@@ -82,8 +84,21 @@ knowing:
   *Max history display period* (24 h by default). The tile then shows an em
   dash and classifies as unknown — which is the correct reading, because a value
   that old is not a live measurement.
-* The sparkline still needs `history.get`. That is why polling has two depths:
-  `panel` (no history) and `full` (history), switched by the dropdown opening.
+* The curve still needs history. That is why polling has two depths: `panel`
+  (no history) and `full` (curves), switched by the dropdown opening. Windows
+  of three hours or more come from `trend.get`, because raw history is kept for
+  about an hour; shorter windows use `history.get`, and items with trend
+  storage disabled fall back to it individually.
+
+### Why the curve is scaled to its own peak
+
+Percentage tiles plot the window's hourly peaks on a 0 → peak axis, so the top
+edge of the strip *is* the highest reading of the window. The alternative — a
+pinned 0–100 axis — rendered a 28-pixel strip as a straight line at 20 %
+utilization. A genuinely flat series keeps a centred band so an idle host never
+draws a line pinned to the top edge. The hover readout reports the nearest real
+sample, never an interpolated value, and the newest `lastvalue` is appended to a
+trend curve so it reaches "now" instead of stopping at the top of the hour.
 
 ### Why history is grouped by value type
 
@@ -203,8 +218,10 @@ monitoring tool annoying to use.
 
 ### Drawing
 
-Sparklines and meters are `St.DrawingArea` + Cairo (`model/series.js` supplies
-the maths). Two constraints shaped this:
+Sparklines, the panel gauge and the hover readout are `St.DrawingArea` + Cairo
+(`model/series.js` supplies the maths); the readout text is a normal `St.Label`
+laid over the curve with translations, so it never participates in the tile's
+layout. Two constraints shaped this:
 
 * **No CSS variables** in St, so the palette lives in `shared/appearance.js` and
   is mirrored by class names in `stylesheet.css`. Severity colours are identical

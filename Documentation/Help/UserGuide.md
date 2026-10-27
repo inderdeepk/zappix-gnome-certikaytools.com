@@ -65,16 +65,22 @@ If it fails, the message names the layer:
 CPU              ▲       ← metric name, trend caret (up/down over the window)
 87%                      ← current value, coloured by severity
 8 cores · load 0.42      ← smaller second line: absolute context
-▁▂▃▅▇▆▅▃▂▁▂▃▅▇          ← sparkline for the configured window
-▬▬▬▬▬▬▬▬▬▬▬▬░░          ← utilization bar (percentage metrics only)
+▁▂▃▅▇▆▅▃▂▁▂▃▅▇          ← trend curve for the configured window
 ```
+
+The curve's top edge is the highest reading in the window: a day that touched
+87% fills the strip at 87%, whatever the current value happens to be. Hover the
+curve and a readout follows the pointer with the time and value of the nearest
+real sample (`15:30 · 66%`); no value is interpolated between samples.
 
 The second line is deliberately smaller and quieter than the headline. Memory
 and Swap show used/total (`5/7.5 GB`), Disk adds the mount the figure belongs
 to (`42.9/64 GB · /var`), Network splits the two directions
 (`↓ 2.1 · ↑ 0.4 Mb/s`), Containers shows how many are stopped, and Processes
 shows the total process count. A host that does not publish the supporting
-item simply has no second line.
+item simply has no second line. Network adds a third line with the traffic
+carried since the start of the calendar month (`1.4 TB this month`), which is
+the number a metered VPS runs out of.
 
 Hover a tile to see the Zabbix item it came from — the name and the exact item
 key — which is what you need to find it in the frontend.
@@ -137,7 +143,7 @@ secret is stored in the keyring beside the API token, never in the list itself.
 |---|---|---|
 | Refresh interval | 30 s | the dropdown always refreshes on open, regardless |
 | Request timeout | 10 s | raise it for a slow VPN or tunnel |
-| Trend window | 60 min | how much history the sparkline draws |
+| Trend window | 1440 min | how far back the trend curve reaches; three hours or more is drawn from hourly trends, so a day works even though raw history is kept for an hour |
 | Hosts per server | 20 | caps how much a large installation can push at the card |
 | Visible metrics | CPU, Memory, Disk, Network, Containers | also available: Swap, Load, Uptime, Processes |
 | Warning at / Critical at | 75% / 90% | applies to percentage metrics only |

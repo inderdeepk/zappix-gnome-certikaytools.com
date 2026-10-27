@@ -8,7 +8,7 @@
      • Popup surface + header
      • Server switcher
      • Server card + host rows
-     • Metric tiles, sparkline, meter
+     • Metric tiles, sparkline, hover readout
      • Severity colours
      • Problems list + footer
      • Empty state
@@ -311,15 +311,33 @@
     font-feature-settings: "tnum";
 }
 
-.zappix-sparkline {
-    /* Height comes from JS (density tokens); this is only a floor. */
-    min-height: 18px;
+/* The period total under the live split (`1.4 TB this month`); dimmer, because
+   it is context rather than a reading. */
+.zappix-tile-detail-secondary {
+    font-size: 0.68em;
+    color: rgba(255, 255, 255, 0.42);
+}
+
+/* Positions the curve and floats the hover readout over it. */
+.zappix-tile-chart {
     margin-top: 4px;
 }
 
-.zappix-meter {
-    min-height: 4px;
-    margin-top: 4px;
+.zappix-sparkline {
+    /* Height comes from JS (density tokens); this is only a floor. */
+    min-height: 18px;
+}
+
+/* Time and value for the sample under the pointer. Tabular digits stop the
+   pill resizing as the readout sweeps across the curve. */
+.zappix-tile-readout {
+    font-size: 0.64em;
+    color: rgba(255, 255, 255, 0.94);
+    background-color: rgba(18, 20, 26, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 5px;
+    padding: 0 4px;
+    font-feature-settings: "tnum";
 }
 
 /* ── Status dots ────────────────────────────────────────────────────── */
@@ -535,6 +553,16 @@
 
 .zappix-light .zappix-tile-detail {
     color: rgba(20, 22, 28, 0.55);
+}
+
+.zappix-light .zappix-tile-detail-secondary {
+    color: rgba(20, 22, 28, 0.42);
+}
+
+.zappix-light .zappix-tile-readout {
+    color: rgba(255, 255, 255, 0.95);
+    background-color: rgba(32, 35, 44, 0.9);
+    border-color: rgba(255, 255, 255, 0.18);
 }
 
 .zappix-light .zappix-title,

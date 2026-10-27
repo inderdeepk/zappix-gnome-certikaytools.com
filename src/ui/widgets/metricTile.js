@@ -5,8 +5,8 @@
 //   ┌─────────────────────────────┐
 //   │ CPU                    ▲    │  label + trend caret
 //   │ 42%                         │  headline, severity-coloured
-//   │ ▁▂▃▅▇▆▅▃▂▁▂▃               │  sparkline
-//   │ ▬▬▬▬▬▬▬▬▬▬░░░░░░░░          │  meter (percent metrics only)
+//   │ 5/7.5 GB · /hostfs          │  second line: absolute context
+//   │ ▁▂▃▅▇▆▅▃▂▁▂▃               │  trend curve (24 h, hovering reads out a sample)
 //   └─────────────────────────────┘
 //
 // The tile owns no data: `update(metricView)` is the entire contract, which is
@@ -21,10 +21,9 @@ import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 
 import { Sparkline } from './sparkline.js';
-import { Meter } from './meter.js';
 import { severityColour } from '../../shared/appearance.js';
 import { axisForKind, trendDirection } from '../../model/series.js';
-import { formatMetricValue, splitValueUnit } from '../../shared/format.js';
+import { formatClockTime, formatMetricValue, splitValueUnit } from '../../shared/format.js';
 import { VALUE_KIND } from '../../model/metricCatalog.js';
 import { gettext as _ } from '../../shared/i18n.js';
 
@@ -97,17 +96,46 @@ export const MetricTile = GObject.registerClass(
             });
             this.add_child(this._detail);
 
+            // A period total that does not belong on the same line as the
+            // live split (`1.4 TB this month` under `↓ 2.1 · ↑ 0.4 Mb/s`).
+            this._detailSecondary = new St.Label({
+                style_class: 'zappix-tile-detail zappix-tile-detail-secondary',
+                text: '',
+                visible: false,
+                x_align: Clutter.ActorAlign.START,
+            });
+            this.add_child(this._detailSecondary);
+
             this._sparklineHeight = sparklineHeight ?? 32;
-            // Expands into the meter's slot on tiles without one, so every tile
-            // in a row ends on the same line.
-            this._sparkline = new Sparkline({
-                height: this._sparklineHeight,
+            // Expands into whatever height the row has left, so every tile in
+            // a row ends on the same line.
+            this._chart = new St.Widget({
+                style_class: 'zappix-tile-chart',
+                layout_manager: new Clutter.BinLayout(),
+                x_expand: true,
                 y_expand: true,
             });
-            this.add_child(this._sparkline);
+            this.add_child(this._chart);
 
-            this._meter = new Meter({ visible: false });
-            this.add_child(this._meter);
+            this._sparkline = new Sparkline({
+                height: this._sparklineHeight,
+                x_expand: true,
+                y_expand: true,
+            });
+            this._chart.add_child(this._sparkline);
+
+            // The hover readout floats above the curve: positioned with
+            // translations because it is a normal St actor, not part of the
+            // Cairo surface.
+            this._readout = new St.Label({
+                style_class: 'zappix-tile-readout',
+                text: '',
+                visible: false,
+                x_align: Clutter.ActorAlign.START,
+                y_align: Clutter.ActorAlign.START,
+            });
+            this._chart.add_child(this._readout);
+            this._sparkline.setHoverHandler((sample) => this._showReadout(sample));
 
             this._severity = '';
             this._valueText = '—';
@@ -139,6 +167,11 @@ export const MetricTile = GObject.registerClass(
             this._detail.text = detail;
             this._detail.visible = detail !== '';
 
+            const detailSecondary =
+                typeof metricView.detailSecondary === 'string' ? metricView.detailSecondary : '';
+            this._detailSecondary.text = detailSecondary;
+            this._detailSecondary.visible = detailSecondary !== '';
+
             if (height && height !== this._sparklineHeight) {
                 this._sparklineHeight = height;
                 this._sparkline.set_height(height);
@@ -149,19 +182,67 @@ export const MetricTile = GObject.registerClass(
 
             this._sparkline.setPalette({
                 stroke: severityColour(metricView.severity, 0.95),
-                fillTop: severityColour(metricView.severity, 0.34),
-                fillBottom: severityColour(metricView.severity, 0.02),
+                // The axis is 0-based, so a high-utilization metric fills almost
+                // the whole strip; a light veil keeps that from reading as the
+                // utilization bar this tile no longer has.
+                fillTop: severityColour(metricView.severity, 0.2),
+                fillBottom: severityColour(metricView.severity, 0.0),
             });
             this._sparkline.setSeries(series, axis);
 
-            const isPercent = kind === VALUE_KIND.PERCENT;
-            this._meter.visible = isPercent && hasValue;
-            if (this._meter.visible) {
-                this._meter.setValue(metricView.value, metricView.severity);
-            }
-
             this._updateTrend(series, kind);
             this.tooltip_text = this._buildTooltip(metricView);
+        }
+
+        /**
+         * `15:30 · 66%` floating over the curve while the pointer is on it.
+         *
+         * `sample` is the real reading nearest the pointer, in the tile's
+         * logical coordinates; `null` means the pointer left.
+         *
+         * @param {{t:number, v:number, x:number, y:number}|null} sample
+         */
+        _showReadout(sample) {
+            if (!sample) {
+                this._readout.visible = false;
+                return;
+            }
+
+            const time = formatClockTime(sample.t);
+            const value = formatMetricValue(this._kind, sample.v);
+            this._readout.text = `${time} · ${value}`;
+            this._readout.visible = true;
+            this._positionReadout(sample.x, sample.y);
+        }
+
+        /**
+         * Keep the readout inside the chart: centred over the sample, flipped
+         * below it when there is no room above.
+         *
+         * @param {number} x logical x of the sample
+         * @param {number} y logical y of the sample
+         */
+        _positionReadout(x, y) {
+            const [minWidth, naturalWidth] = this._readout.get_preferred_width(-1);
+            const [, naturalHeight] = this._readout.get_preferred_height(naturalWidth);
+
+            const width = Math.max(minWidth, naturalWidth);
+            const chartWidth = this._chart.get_width();
+            const chartHeight = this._chart.get_height();
+            const margin = 1;
+
+            const maxLeft = Math.max(margin, chartWidth - width - margin);
+            const left = Math.min(Math.max(margin, x - width / 2), maxLeft);
+
+            const above = y - naturalHeight - 5;
+            const below = y + 5;
+            const top =
+                above >= margin
+                    ? above
+                    : Math.min(Math.max(margin, chartHeight - naturalHeight - margin), below);
+
+            this._readout.translation_x = Math.round(left);
+            this._readout.translation_y = Math.round(Math.max(margin, top));
         }
 
         /**

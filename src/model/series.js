@@ -32,6 +32,92 @@ export function toNumericSeries(rows) {
     return points;
 }
 
+/** Trend field plotted on the curve: the hour's highest sample. */
+export const TREND_PEAK_FIELD = 'value_max';
+
+/** Seconds one trend row covers. Zabbix aggregates trends into whole hours. */
+export const TREND_INTERVAL_SECONDS = 3600;
+
+/**
+ * Convert `trend.get` rows into an ordered numeric series of hourly peaks.
+ *
+ * The peak rather than the average is what makes a 24-hour curve answer "how
+ * hard did this box work today": an hour of idle with one 90 % minute is a 90 %
+ * hour for the operator looking for the spike. The series' maximum is therefore
+ * also the window's true high-water mark, which is what the chart's top edge is
+ * scaled to.
+ *
+ * @param {Array<{clock: string|number, value_max?: string|number}>} rows
+ * @param {object} [options]
+ * @param {string} [options.field=TREND_PEAK_FIELD] which aggregate to plot
+ * @returns {Array<{t: number, v: number}>}
+ */
+export function toTrendSeries(rows, { field = TREND_PEAK_FIELD } = {}) {
+    const points = [];
+    for (const row of rows ?? []) {
+        const t = Number.parseInt(String(row?.clock ?? ''), 10);
+        const v = Number.parseFloat(String(row?.[field] ?? ''));
+        if (!Number.isFinite(t) || !Number.isFinite(v)) continue;
+        points.push({ t, v });
+    }
+    points.sort((a, b) => a.t - b.t);
+    return points;
+}
+
+/**
+ * Bytes carried by a set of bits-per-second trend rows.
+ *
+ * Network items are stored as a rate, so the period total is the area under
+ * the curve: each hour contributes its average rate for the whole hour. An
+ * hour with no row contributes nothing, which is the honest reading — Zabbix
+ * only writes a row when the item reported during that hour.
+ *
+ * @param {Array<{value_avg?: string|number}>} rows
+ * @param {object} [options]
+ * @param {number} [options.secondsPerRow=TREND_INTERVAL_SECONDS]
+ * @returns {number|null} null when no row carried a usable average
+ */
+export function sumTrendBytes(rows, { secondsPerRow = TREND_INTERVAL_SECONDS } = {}) {
+    let bits = 0;
+    let counted = 0;
+
+    for (const row of rows ?? []) {
+        const average = Number.parseFloat(String(row?.value_avg ?? ''));
+        if (!Number.isFinite(average) || average < 0) continue;
+        bits += average * secondsPerRow;
+        counted += 1;
+    }
+
+    return counted > 0 ? bits / 8 : null;
+}
+
+/**
+ * Unix seconds at the start of the calendar month containing `nowSeconds`,
+ * in local time — a bandwidth allowance resets on the operator's month, not
+ * on the server's UTC month.
+ *
+ * @param {number} [nowSeconds=Date.now()/1000]
+ * @returns {number}
+ */
+export function monthStartSeconds(nowSeconds = Date.now() / 1000) {
+    const date = new Date(Number(nowSeconds) * 1000);
+    return Math.floor(new Date(date.getFullYear(), date.getMonth(), 1).getTime() / 1000);
+}
+
+/**
+ * Unix seconds at the top of the hour containing `nowSeconds`.
+ *
+ * Trend rows are hourly, so asking for the partial current hour only produces
+ * a new query every poll; rounding down keeps the request (and its cache key)
+ * stable until the next row can exist.
+ *
+ * @param {number} [nowSeconds=Date.now()/1000]
+ * @returns {number}
+ */
+export function hourStartSeconds(nowSeconds = Date.now() / 1000) {
+    return Math.floor(Number(nowSeconds) / TREND_INTERVAL_SECONDS) * TREND_INTERVAL_SECONDS;
+}
+
 /**
  * Reduce a series to at most `maxPoints` while preserving its extremes.
  *
@@ -105,15 +191,19 @@ export function computeStats(points) {
 /**
  * Map a series into a pixel box.
  *
+ * Samples are placed by their timestamp, not by their index: a 24-hour curve
+ * comes from hourly trend rows while the newest reading arrives minutes ago, so
+ * evenly-spaced indices would draw the last minute as a whole hour. Series
+ * without usable timestamps fall back to even spacing.
+ *
  * A flat series is centred vertically instead of sitting on the floor: an idle
  * server at a constant 4% should draw a flat line in the middle of its strip,
  * which reads as "steady", not "zero".
  *
  * `floor`/`ceiling` pin the value axis so that CPU at 3% does not fill the
- * tile with an alarming-looking curve. Pass them from the caller when the
- * metric has a natural domain (percentages: 0..100).
+ * tile with an alarming-looking curve.
  *
- * @param {Array<{v:number}>} points
+ * @param {Array<{t?:number, v:number}>} points
  * @param {object} options
  * @param {number} options.width
  * @param {number} options.height
@@ -155,17 +245,55 @@ export function buildSparklineGeometry(points, options) {
 
     const span = max - min;
     const step = points.length > 1 ? drawWidth / (points.length - 1) : 0;
+    const first = points[0];
+    const last = points[points.length - 1];
+    const timeSpan = Number.isFinite(first?.t) && Number.isFinite(last?.t) ? last.t - first.t : 0;
 
     const mapped = points.map((point, index) => {
         const ratio = (point.v - min) / span;
         const clamped = Math.min(1, Math.max(0, ratio));
+        const along =
+            timeSpan > 0 && Number.isFinite(point.t)
+                ? Math.min(1, Math.max(0, (point.t - first.t) / timeSpan))
+                : points.length > 1
+                  ? index / (points.length - 1)
+                  : 0;
         return {
-            x: paddingX + step * index,
+            x: paddingX + drawWidth * along,
             y: paddingY + (1 - clamped) * drawHeight,
         };
     });
 
-    return { points: mapped, min, max, baselineY, width, height };
+    return { points: mapped, min, max, baselineY, width, height, step };
+}
+
+/**
+ * Index of the drawn sample closest to a pointer position.
+ *
+ * Used by the hover readout: the curve is smoothed, so the honest answer to
+ * "what am I pointing at" is the nearest real sample, never an interpolated
+ * value the server never reported.
+ *
+ * @param {Array<{x:number}>} points mapped points, sorted by x
+ * @param {number} x pointer position in the same coordinate space
+ * @returns {number} -1 when there is nothing to hit
+ */
+export function nearestPointIndex(points, x) {
+    if (!Array.isArray(points) || points.length === 0) return -1;
+    if (!Number.isFinite(x)) return points.length - 1;
+
+    let low = 0;
+    let high = points.length - 1;
+    while (low < high) {
+        const middle = (low + high) >> 1;
+        if (points[middle].x < x) low = middle + 1;
+        else high = middle;
+    }
+
+    const after = points[low];
+    const before = points[low - 1];
+    if (!before) return low;
+    return Math.abs(before.x - x) <= Math.abs(after.x - x) ? low - 1 : low;
 }
 
 /**
@@ -213,25 +341,43 @@ export function buildBezierSegments(points) {
 /**
  * Value range worth drawing for a metric.
  *
- * The tile's meter already shows where a percentage sits on 0..100, so the
- * sparkline shows *movement*: percentages, counts and load are fitted to their
- * own window, with a minimum span so rounding noise stays a flat line. On a
- * pinned 0..100 axis a 28-pixel strip moves a quarter pixel per point, and
- * every curve rendered as a straight line. Rates keep a zero floor because
- * zero traffic is itself the signal.
+ * Percentages are scaled from zero to the highest reading in the window, so the
+ * curve's top edge *is* the period peak: a day that touched 87 % fills the
+ * strip at 87 %, whatever the current value happens to be. A genuinely flat
+ * series has no peak to scale to, so it keeps a centred band rather than
+ * drawing a line pinned to the top edge.
+ *
+ * Rates, counts and load are fitted to their own window, with a minimum span so
+ * rounding noise stays a flat line, and rates keep a zero floor because zero
+ * traffic is itself the signal.
  *
  * @param {string} kind metric VALUE_KIND
  * @param {Array<{v:number}>} points
  * @returns {{floor: number|null, ceiling: number|null}}
  */
 export function axisForKind(kind, points) {
-    if (kind === 'percent') return fittedAxis(points, { minSpan: 20, lower: 0, upper: 100 });
+    if (kind === 'percent') return percentAxis(points);
     if (kind === 'count') return fittedAxis(points, { minSpan: 4, lower: 0 });
     if (kind === 'load') return fittedAxis(points, { minSpan: 1, lower: 0 });
     if (kind === 'duration') return { floor: 0, ceiling: null };
     const stats = computeStats(points);
     const ceiling = stats ? Math.max(1, stats.max * 1.15) : null;
     return { floor: 0, ceiling };
+}
+
+/**
+ * 0 → window peak for utilization percentages.
+ *
+ * @param {Array<{v:number}>} points
+ * @returns {{floor: number, ceiling: number}}
+ */
+function percentAxis(points) {
+    const stats = computeStats(points);
+    if (!stats) return { floor: 0, ceiling: 100 };
+    if (stats.max === stats.min) {
+        return fittedAxis(points, { minSpan: 20, lower: 0, upper: 100 });
+    }
+    return { floor: 0, ceiling: Math.max(stats.max, 1) };
 }
 
 /**

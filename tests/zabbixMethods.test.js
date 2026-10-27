@@ -13,6 +13,7 @@ import {
     HISTORY_VALUE_TYPE,
     itemGet,
     problemGet,
+    trendGet,
     userLogin,
     userLogout,
 } from '../src/api/zabbixMethods.js';
@@ -175,6 +176,40 @@ await runTests([
         },
     ],
     [
+        'trendGet asks for hourly aggregates over the window',
+        () => {
+            const call = trendGet({
+                itemIds: ['7'],
+                valueType: HISTORY_VALUE_TYPE.UNSIGNED,
+                timeFrom: 1000.9,
+                timeTill: 2000.4,
+                limit: 24,
+            });
+            assertEqual(call.method, 'trend.get');
+            assertEqual(call.params.history, 3);
+            assertDeepEqual(call.params.itemids, ['7']);
+            assertEqual(call.params.time_from, 1000);
+            assertEqual(call.params.time_till, 2000);
+            assertEqual(call.params.sortorder, 'ASC');
+            assertEqual(call.params.limit, 24);
+            assertDeepEqual(call.params.output, [
+                'itemid',
+                'clock',
+                'num',
+                'value_min',
+                'value_avg',
+                'value_max',
+            ]);
+        },
+    ],
+    [
+        'trendGet defaults to a bounded row count',
+        () => {
+            const call = trendGet({ itemIds: ['1'], valueType: 0, timeFrom: 0, timeTill: 10 });
+            assertEqual(call.params.limit, 2000);
+        },
+    ],
+    [
         'groupItemsByValueType separates float from unsigned',
         () => {
             const groups = groupItemsByValueType([
@@ -184,6 +219,22 @@ await runTests([
             ]);
             assertDeepEqual(groups.get(0), ['1', '3']);
             assertDeepEqual(groups.get(3), ['2']);
+        },
+    ],
+    [
+        'groupItemsByValueType can keep only trendable types',
+        () => {
+            const groups = groupItemsByValueType(
+                [
+                    { itemid: '1', value_type: '0' },
+                    { itemid: '2', value_type: '1' },
+                    { itemid: '3', value_type: '3' },
+                ],
+                { only: [0, 3] },
+            );
+            assertEqual(groups.size, 2);
+            assertDeepEqual(groups.get(0), ['1']);
+            assertDeepEqual(groups.get(3), ['3']);
         },
     ],
     [
