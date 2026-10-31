@@ -128,6 +128,21 @@ await runTests([
         },
     ],
     [
+        'swap is part of the default dashboard, in the slot under memory',
+        () => {
+            assertEqual(getMetric('swap')?.defaultEnabled, true);
+            assertDeepEqual(METRIC_IDS.slice(0, 6), [
+                'cpu',
+                'memory',
+                'disk',
+                'swap',
+                'network',
+                'containers',
+            ]);
+            assertEqual(DEFAULT_METRIC_IDS.includes('swap'), true);
+        },
+    ],
+    [
         'resolveEnabledMetrics preserves catalog order regardless of input order',
         () => {
             const resolved = resolveEnabledMetrics(['disk', 'cpu']);

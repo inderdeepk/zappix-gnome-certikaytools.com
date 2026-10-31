@@ -110,6 +110,7 @@ host and has reported. Keys below are from the production host.
 | CPU | `system.cpu.util` | from the Linux template; falls back to `system.cpu.utilization`, then load average |
 | Memory | `vm.memory.util` | percentage |
 | Disk | `vfs.fs.size[/hostfs,pused]` | see below |
+| Swap | `system.swap.size[,pfree]` | inverted to *used* %; second line from `system.swap.size[,total]` |
 | Network | `net.if.in["eth0"]` + `net.if.out["eth0"]` | summed; unsigned (`value_type: 3`) with `bps` units |
 | Containers | `docker.containers.running` | from `Docker by Zabbix agent 2`; production read 21 running / 3 stopped / 24 total |
 

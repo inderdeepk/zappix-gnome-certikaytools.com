@@ -145,7 +145,7 @@ secret is stored in the keyring beside the API token, never in the list itself.
 | Request timeout | 10 s | raise it for a slow VPN or tunnel |
 | Trend window | 1440 min | how far back the trend curve reaches; three hours or more is drawn from hourly trends, so a day works even though raw history is kept for an hour |
 | Hosts per server | 20 | caps how much a large installation can push at the card |
-| Visible metrics | CPU, Memory, Disk, Network, Containers | also available: Swap, Load, Uptime, Processes |
+| Visible metrics | CPU, Memory, Disk, Swap, Network, Containers | also available: Load, Uptime, Processes |
 | Warning at / Critical at | 75% / 90% | applies to percentage metrics only |
 | New problems | on | notify when a problem appears that was not there before |
 | Critical utilization | off | notify when a host crosses the critical threshold |

@@ -97,7 +97,7 @@
          Metrics shown
          =================================================================== -->
     <key name="metrics-enabled" type="as">
-      <default>['cpu', 'memory', 'disk', 'network', 'containers']</default>
+      <default>['cpu', 'memory', 'disk', 'swap', 'network', 'containers']</default>
       <summary>Visible Metrics</summary>
       <description>Which utilization tiles are shown for each host. Valid ids: cpu, memory, swap, disk, network, containers, load, uptime, processes. Unknown ids are ignored.</description>
     </key>

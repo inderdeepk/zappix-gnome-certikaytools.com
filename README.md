@@ -1,10 +1,10 @@
 # Zappix — server monitor for the GNOME top panel
 
 A panel icon that opens a live system-utilization dashboard for every Zabbix
-server you configure. Hover it and the dropdown appears: CPU, memory, disk and
-network per host, with 24-hour trend curves you can hover for an exact reading,
-a problem list, and severity colours that mean the same thing everywhere in the
-extension.
+server you configure. Hover it and the dropdown appears: CPU, memory, disk, swap
+and network per host, with 24-hour trend curves you can hover for an exact
+reading, a problem list, and severity colours that mean the same thing
+everywhere in the extension.
 
 It talks to the Zabbix JSON-RPC API directly — no PHP frontend required, no
 agent on your desktop, nothing to install on the server beyond Zabbix itself.

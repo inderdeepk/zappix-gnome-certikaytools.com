@@ -272,6 +272,41 @@ export const METRICS = Object.freeze([
         }),
     }),
     Object.freeze({
+        id: 'swap',
+        label: 'Swap',
+        unitLabel: 'used',
+        kind: VALUE_KIND.PERCENT,
+        aggregate: AGGREGATE.MAX,
+        higherIsWorse: true,
+        sparkline: true,
+        // Swap exhaustion is the step before the OOM killer, and the stock
+        // Linux template always publishes the percentage, so the tile earns a
+        // slot on the default dashboard rather than being opt-in.
+        defaultEnabled: true,
+        candidates: Object.freeze([
+            Object.freeze({
+                search: 'system.swap.size[,pused]',
+                preferredKey: 'system.swap.size[,pused]',
+                transform: TRANSFORM.AUTO_PERCENT,
+            }),
+            // The shipped template always provides the *free* percentage.
+            Object.freeze({
+                search: 'system.swap.size[,pfree]',
+                preferredKey: 'system.swap.size[,pfree]',
+                transform: TRANSFORM.INVERT,
+            }),
+            Object.freeze({
+                search: 'vm.memory.utilization[swap]',
+                transform: TRANSFORM.AUTO_PERCENT,
+            }),
+        ]),
+        detail: Object.freeze({
+            kind: DETAIL_KIND.USAGE,
+            search: Object.freeze(['system.swap.size[,total]']),
+            totalKeys: Object.freeze(['system.swap.size[,total]']),
+        }),
+    }),
+    Object.freeze({
         id: 'network',
         label: 'Network',
         unitLabel: 'throughput',
@@ -337,38 +372,6 @@ export const METRICS = Object.freeze([
             kind: DETAIL_KIND.STOPPED,
             search: Object.freeze(['docker.containers.stopped']),
             stoppedKeys: Object.freeze(['docker.containers.stopped']),
-        }),
-    }),
-    Object.freeze({
-        id: 'swap',
-        label: 'Swap',
-        unitLabel: 'used',
-        kind: VALUE_KIND.PERCENT,
-        aggregate: AGGREGATE.MAX,
-        higherIsWorse: true,
-        sparkline: true,
-        defaultEnabled: false,
-        candidates: Object.freeze([
-            Object.freeze({
-                search: 'system.swap.size[,pused]',
-                preferredKey: 'system.swap.size[,pused]',
-                transform: TRANSFORM.AUTO_PERCENT,
-            }),
-            // The shipped template always provides the *free* percentage.
-            Object.freeze({
-                search: 'system.swap.size[,pfree]',
-                preferredKey: 'system.swap.size[,pfree]',
-                transform: TRANSFORM.INVERT,
-            }),
-            Object.freeze({
-                search: 'vm.memory.utilization[swap]',
-                transform: TRANSFORM.AUTO_PERCENT,
-            }),
-        ]),
-        detail: Object.freeze({
-            kind: DETAIL_KIND.USAGE,
-            search: Object.freeze(['system.swap.size[,total]']),
-            totalKeys: Object.freeze(['system.swap.size[,total]']),
         }),
     }),
     Object.freeze({

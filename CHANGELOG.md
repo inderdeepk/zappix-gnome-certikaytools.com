@@ -64,6 +64,13 @@ All notable changes to Zappix are recorded here. The format follows
 
 ### Changed
 
+- **Swap is on by default.** It shipped as an opt-in metric even though a host
+  that has run out of swap is one step from the OOM killer, and the stock Linux
+  template always publishes the percentage. The tile now sits directly under
+  Memory in the grid and reads `1.2/2 GB` on its second line. Installations
+  that have saved their own metric list keep it — the new default applies where
+  no preference is stored.
+
 - **Dropdown visual pass.** Tile numbers stay neutral while healthy and only
   turn amber or red when they need attention (the panel's rule); units are set
   smaller than the figure (`46.9` kb/s) with tabular digits. The utilization bar
