@@ -59,7 +59,7 @@ src/
   api/                JSON-RPC codec, URL/version helpers, Soup transport, per-server client
   model/              metric catalog, response normalisation, series maths, severity
   monitor/            poll orchestration, backoff, snapshots, notification policy
-  shared/             settings, server store, secrets, formatting, i18n, logging
+  shared/             settings, server store, secrets, formatting, i18n, logging, brand mark
   ui/                 panel indicator, hover controller, dashboard, cards, widgets, prefs pages
 tests/                unit tests, plain gjs, no shell or network required
 Documentation/        architecture, API reference, development, testing, security, user guide
@@ -67,8 +67,9 @@ Documentation/        architecture, API reference, development, testing, securit
 
 The split is deliberate: everything under `api/` (except the transport),
 `model/`, `monitor/backoff.js`, `monitor/snapshotStore.js`,
-`monitor/notificationPolicy.js` and `shared/` is pure JavaScript with no GI
-imports, which is why the tests run under `gjs` with no compositor.
+`monitor/notificationPolicy.js` and `shared/` (except `settings.js`,
+`secrets.js` and `brand.js`) is pure JavaScript with no GI imports, which is why
+the tests run under `gjs` with no compositor.
 
 ## Install
 
@@ -128,3 +129,8 @@ VPS.
 ## License
 
 GPL-2.0-or-later. See [LICENSE](LICENSE).
+
+Zabbix is a trademark of Zabbix LLC. The mark bundled in
+[`icons/zabbix_logo.svg`](icons/zabbix_logo.svg) is used only to identify the
+servers Zappix monitors; Zappix is not affiliated with or endorsed by Zabbix
+LLC.

@@ -33,6 +33,7 @@ import { MetricTile } from './widgets/metricTile.js';
 import { SEVERITY, severityClass } from '../model/severity.js';
 import { SERVER_STATUS, describeServer } from '../monitor/snapshotStore.js';
 import { DENSITY_TOKENS } from '../shared/appearance.js';
+import { zabbixLogoIcon } from '../shared/brand.js';
 import { formatClockTime, formatRelativeTime } from '../shared/format.js';
 import { gettext as _, ngettext, format } from '../shared/i18n.js';
 
@@ -168,13 +169,30 @@ export const ServerCard = GObject.registerClass(
             });
             this._footer.add_child(this._updatedLabel);
 
-            this._openButton = new St.Button({
-                style_class: 'zappix-link-button',
-                child: new St.Label({
+            const openContent = new St.BoxLayout({
+                style_class: 'zappix-link-button-content',
+                vertical: false,
+            });
+            openContent.add_child(
+                new St.Icon({
+                    gicon: zabbixLogoIcon(),
+                    style_class: 'zappix-link-button-icon',
+                    y_align: Clutter.ActorAlign.CENTER,
+                }),
+            );
+            openContent.add_child(
+                new St.Label({
                     style_class: 'zappix-link-button-label',
                     text: _('Open Zabbix'),
+                    y_align: Clutter.ActorAlign.CENTER,
                 }),
+            );
+
+            this._openButton = new St.Button({
+                style_class: 'zappix-link-button',
+                child: openContent,
                 can_focus: true,
+                accessible_name: _('Open Zabbix'),
                 reactive: true,
             });
             this._openButton.connect('clicked', () => this._onOpenFrontend());

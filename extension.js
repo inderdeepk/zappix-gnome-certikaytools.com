@@ -25,6 +25,7 @@ import { ZappixIndicator } from './src/ui/indicator.js';
 import { MonitorService } from './src/monitor/poller.js';
 import { NotificationPolicy, URGENCY } from './src/monitor/notificationPolicy.js';
 import { ZappixSettings } from './src/shared/settings.js';
+import { zabbixLogoIcon } from './src/shared/brand.js';
 import { SecretStore } from './src/shared/secrets.js';
 import { initI18n } from './src/shared/i18n.js';
 import { error, info, setDebugEnabled } from './src/shared/log.js';
@@ -271,7 +272,7 @@ export default class ZappixExtension extends Extension {
         try {
             this._traySource = new MessageTray.Source({
                 title: 'Zappix',
-                'icon-name': 'network-server-symbolic',
+                icon: zabbixLogoIcon(),
             });
 
             this._traySource.connect('destroy', () => {

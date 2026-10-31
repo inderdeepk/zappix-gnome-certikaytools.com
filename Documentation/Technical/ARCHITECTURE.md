@@ -45,6 +45,7 @@ testable without a compositor, a shell, or a server:
 | `monitor/serverPoller.js` | one poll assembled from the client | imports the client |
 | `shared/settings.js` | typed, clamped GSettings access | needs `Gio.Settings` |
 | `shared/secrets.js` | keyring + file fallback | needs `Gio`, dynamic `Secret` |
+| `shared/brand.js` | locates the bundled Zabbix mark for the shell and prefs | needs `Gio`, `GLib` |
 | `ui/indicator.js` | panel button, hover timers, menu lifecycle | needs `PanelMenu` |
 | `ui/dashboard.js`, `ui/serverCard.js`, `ui/widgets/*` | actors and Cairo drawing | needs `St`, `Clutter` |
 | `ui/prefs/*` | preference pages and the server dialog | needs `Adw`, `Gtk` |

@@ -84,6 +84,10 @@
     padding: 0 2px 2px 2px;
 }
 
+.zappix-brand-icon {
+    icon-size: 16px;
+}
+
 /* The brand is chrome, not content: it steps back so the server name below
    is the first thing read. */
 .zappix-title {
@@ -465,6 +469,14 @@
     background-color: rgba(255, 255, 255, 0.085);
 }
 
+.zappix-link-button-content {
+    spacing: 5px;
+}
+
+.zappix-link-button-icon {
+    icon-size: 12px;
+}
+
 .zappix-link-button-label {
     font-size: 0.78em;
     color: #7aa2f7;
@@ -479,7 +491,6 @@
 
 .zappix-empty-icon {
     icon-size: 42px;
-    color: rgba(255, 255, 255, 0.28);
     margin-bottom: 4px;
 }
 
@@ -626,8 +637,4 @@
 
 .zappix-light .zappix-text-unknown {
     color: rgba(20, 22, 28, 0.45);
-}
-
-.zappix-light .zappix-empty-icon {
-    color: rgba(20, 22, 28, 0.26);
 }

@@ -8,6 +8,11 @@ All notable changes to Zappix are recorded here. The format follows
 
 ### Added
 
+- **The Zabbix mark identifies the extension.** The bundled logo now sits beside
+  the dropdown title, replaces the generic server glyph in the empty state,
+  fronts the **Open Zabbix** link, brands notification banners, and heads the
+  Servers page in preferences.
+
 - **The trend curve is a 24-hour curve and reads out on hover.** Hovering a
   tile's curve draws a crosshair on the sample nearest the pointer and floats
   `15:30 · 66%` beside it — the real reading and its time, never an

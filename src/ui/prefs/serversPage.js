@@ -13,6 +13,7 @@ import Gtk from 'gi://Gtk';
 
 import { ServerEditor } from './serverEditor.js';
 import { swapGroup } from './widgets.js';
+import { zabbixLogoIcon } from '../../shared/brand.js';
 import { MAX_SERVERS, removeServer, upsertServer } from '../../shared/serverStore.js';
 import { format, gettext as _ } from '../../shared/i18n.js';
 
@@ -33,11 +34,40 @@ export class ServersPage {
             icon_name: 'network-server-symbolic',
         });
 
+        // Built once and never swapped, so the brand stays above the list no
+        // matter how often the stored servers change.
+        this._brandGroup = this._buildBrandGroup();
+        this.page.add(this._brandGroup);
+
         this._listGroup = null;
         this._addGroup = null;
         this._storageGroup = null;
 
         this.refresh();
+    }
+
+    /**
+     * Brand header for the page a user lands on first.
+     *
+     * @returns {Adw.PreferencesGroup}
+     */
+    _buildBrandGroup() {
+        const group = new Adw.PreferencesGroup();
+
+        const row = new Adw.ActionRow({
+            title: 'Zappix',
+            subtitle: _('Live server monitoring for Zabbix'),
+        });
+        row.add_prefix(
+            new Gtk.Image({
+                gicon: zabbixLogoIcon(),
+                pixel_size: 40,
+                valign: Gtk.Align.CENTER,
+            }),
+        );
+        group.add(row);
+
+        return group;
     }
 
     // ── rendering ───────────────────────────────────────────────────────────

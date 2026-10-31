@@ -24,6 +24,7 @@ import { ServerCard } from './serverCard.js';
 import { StatusDot } from './widgets/statusDot.js';
 import { SEVERITY } from '../model/severity.js';
 import { SERVER_STATUS } from '../monitor/snapshotStore.js';
+import { zabbixLogoIcon } from '../shared/brand.js';
 import { gettext as _ } from '../shared/i18n.js';
 
 export const Dashboard = GObject.registerClass(
@@ -71,6 +72,14 @@ export const Dashboard = GObject.registerClass(
 
             this._headerDot = new StatusDot({ style_class: 'zappix-dot zappix-dot-large' });
             header.add_child(this._headerDot);
+
+            header.add_child(
+                new St.Icon({
+                    gicon: zabbixLogoIcon(),
+                    style_class: 'zappix-brand-icon',
+                    y_align: Clutter.ActorAlign.CENTER,
+                }),
+            );
 
             const title = new St.Label({
                 style_class: 'zappix-title',
@@ -125,7 +134,7 @@ export const Dashboard = GObject.registerClass(
 
             this._emptyState.add_child(
                 new St.Icon({
-                    icon_name: 'network-server-symbolic',
+                    gicon: zabbixLogoIcon(),
                     style_class: 'zappix-empty-icon',
                     x_align: Clutter.ActorAlign.CENTER,
                 }),
